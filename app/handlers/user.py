@@ -1,0 +1,83 @@
+"""Хендлеры пользовательских команд и callback‑запросов."""
+
+from aiogram import Router, types, F
+from aiogram.filters import CommandStart
+
+from app import database as db
+from app.keyboards import main_menu, profile_menu, to_profile_menu
+from app.panel import PanelAPI
+from app.utils import generate_vless_link
+
+router = Router(name="user")
+
+
+@router.message(CommandStart())
+async def cmd_start(message: types.Message, panel: PanelAPI) -> None:
+    user = await db.get_user(message.from_user.id)
+
+    # Проверяем статус (для совместимости со старыми записями в БД)
+    user_status = user.get("status", "active") if user else None
+    has_active_vpn = user and user_status == "active"
+
+    if has_active_vpn:
+        text = "С возвращением! 👋 Управление твоим VPN ниже 👇"
+    else:
+        text = "Привет! 👋 Нажми кнопку ниже, чтобы купить VPN-подключение."
+
+    await message.answer(text, reply_markup=main_menu(has_vpn=has_active_vpn))
+
+
+@router.callback_query(F.data == "main_menu")
+async def on_main_menu(callback: types.CallbackQuery) -> None:
+    """Главное меню."""
+    user = await db.get_user(callback.from_user.id)
+    user_status = user.get("status", "active") if user else None
+    has_active_vpn = user and user_status == "active"
+    
+    if has_active_vpn:
+        text = "🏠 **Главное меню**\n\nВыберите действие:"
+    else:
+        text = "🏠 **Главное меню**\n\nУ вас еще нет активного VPN."
+    
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=main_menu(has_vpn=has_active_vpn)
+    )
+
+
+@router.callback_query(F.data == "profile")
+async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
+    await callback.message.edit_text("⏳ Загружаю статистику…")
+
+    user = await db.get_user(callback.from_user.id)
+    if not user:
+        await callback.message.edit_text("❌ Пользователь не найден в базе.")
+        return
+
+    uuid_str, email = user["uuid"], user["email"]
+    user_status = user.get("status", "active")
+
+    up, down = await panel.get_client_traffic(email)
+    total_gb = round((up + down) / (1024**3), 2)
+
+    link = generate_vless_link(uuid_str, email)
+    
+    status_text = "✅ Активен" if user_status == "active" else "⏳ Ожидание подтверждения платежа"
+    
+    message_text = (
+        f"📊 **Личный кабинет**\n\n"
+        f"👤 **Пользователь:** {email}\n"
+        f"📱 **Статус:** {status_text}\n"
+        f"🌐 **Потрачено трафика:** {total_gb} GB\n"
+        f"📋 **План:** Стандартный (1 месяц)\n\n"
+        f"🔑 **Твой ключ подключения:**\n\n"
+        f"{link}\n\n"
+        f"Скопируй ссылку выше и вставь в приложение V2RayNG, NekoBox или Hiddify."
+    )
+    
+    await callback.message.edit_text(
+        message_text,
+        parse_mode="Markdown",
+        reply_markup=profile_menu(),
+    )
