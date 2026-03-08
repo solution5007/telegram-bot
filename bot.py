@@ -4,13 +4,13 @@ import aiosqlite
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import *
-from panel import PanelAPI
+from app.config import settings
+from app.panel import PanelAPI
 
 
 
 logger = logging.getLogger(__name__)
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=settings.bot_token)
 dp = Dispatcher()
 panel = PanelAPI()
 
@@ -34,12 +34,12 @@ async def init_db():
 # --- ГЕНЕРАТОР ССЫЛОК ---
 def generate_vless_link(uuid_str, email):
     # Достаем IP сервера из панели (убираем https:// и порт)
-    server_ip = PANEL_URL.replace("https://", "").replace("http://", "").split(":")[0]
+    server_ip = settings.panel_url.replace("https://", "").replace("http://", "").split(":")[0]
     server_port = "443" # Порт VLESS Reality
     
     link = (f"vless://{uuid_str}@{server_ip}:{server_port}"
-            f"?security=reality&sni={VLESS_SNI}&fp=chrome&pbk={VLESS_PUBLIC_KEY}"
-            f"&sid={VLESS_SID}&type=tcp&flow=xtls-rprx-vision&headerType=none#{email}")
+            f"?security=reality&sni={settings.vless_sni}&fp=chrome&pbk={settings.vless_public_key}"
+            f"&sid={settings.vless_sid}&type=tcp&flow=xtls-rprx-vision&headerType=none#{email}")
     return link
 
 # --- ХЕНДЛЕРЫ ---
@@ -131,9 +131,9 @@ async def main():
     
     # ✅ ЛОГИН В ПАНЕЛЬ ДО ЗАПУСКА БОТА
     logger.info("Логинюсь в панель...")
-    session = await panel.get_session()
+    session = await panel._ensure_session()
     if not session:
-        logger.error("Не удалось подключиться к панели. Проверьте настройки config.py")
+        logger.error("Не удалось подключиться к панели. Проверьте настройки .env")
         return
     logger.info("Панель готова к работе!")
     
@@ -143,8 +143,8 @@ async def main():
         await dp.start_polling(bot)
     finally:
         # Корректно закрываем сессию с панелью
-        if panel.session:
-            await panel.session.close()
+        if panel._session:
+            await panel._session.close()
 
 if __name__ == "__main__":
     try:

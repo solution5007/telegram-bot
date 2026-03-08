@@ -41,14 +41,13 @@ async def on_main_menu(callback: types.CallbackQuery) -> None:
     
     await callback.message.edit_text(
         text,
-        parse_mode="Markdown",
         reply_markup=main_menu(has_vpn=has_active_vpn)
     )
 
 
 @router.callback_query(F.data == "profile")
 async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
-    await callback.message.edit_text("Загружаю статистику…")
+    await callback.message.edit_text("Загружаю статистику...")
 
     user = await db.get_user(callback.from_user.id)
     if not user:
@@ -72,12 +71,12 @@ async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
         f"Потрачено трафика: {total_gb} GB\n"
         f"План: Стандартный (1 месяц)\n\n"
         f"Твой ключ подключения:\n\n"
-        f"{link}\n\n"
+        f"<code>{link}</code>\n\n"
         f"Используйте её в любом клиенте для создания подключения."
     )
     
     await callback.message.edit_text(
         message_text,
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=profile_menu(),
     )

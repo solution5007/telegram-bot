@@ -82,7 +82,7 @@ class PanelAPI:
                     "password": settings.panel_password,
                     "loginSecret": code,
                 }
-                logger.info("🔄 Попытка логина в панель (TOTP offset=%s)", offset)
+                logger.info("Попытка логина в панель (TOTP offset=%s)", offset)
                 try:
                     async with self._session.post(login_url, data=payload) as resp:
                         text = await resp.text()
@@ -108,7 +108,7 @@ class PanelAPI:
             return None
 
         url = self._url("panel/api/inbounds/list")
-        logger.info("🔎 Запрос инбаундов: %s", url)
+        logger.info("Запрос инбаундов: %s", url)
 
         try:
             async with session.get(url) as resp:
@@ -123,9 +123,9 @@ class PanelAPI:
 
             for ib in data.get("obj", []):
                 proto = ib.get("protocol", "").lower()
-                logger.info("  🔹 id=%s  proto=%s  remark=%s", ib.get("id"), proto, ib.get("remark"))
+                logger.info("  id=%s  proto=%s  remark=%s", ib.get("id"), proto, ib.get("remark"))
                 if proto == "vless":
-                    logger.info("Выбран VLESS inbound id=%s",    )
+                    logger.info("Выбран VLESS inbound id=%s", ib.get("id"))
                     await asyncio.sleep(1)
                     return ib["id"]
 
@@ -170,7 +170,7 @@ class PanelAPI:
         }
 
         url = self._url("panel/api/inbounds/addClient")
-        logger.info("⏳ Создаю клиента %s (uuid=%s)…", email, client_uuid)
+        logger.info("Создаю клиента %s (uuid=%s)...", email, client_uuid)
 
         try:
             async with session.post(url, json=payload) as resp:

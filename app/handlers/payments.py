@@ -34,15 +34,15 @@ async def on_buy_vpn(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Начало процесса покупки VPN."""
     await callback.message.edit_text(
         f"VPN Подписка\n\n"
-        f"Стоимость: {PAYMENT_AMOUNT} ₽\n"
+        f"Стоимость: {PAYMENT_AMOUNT} руб\n"
         f"Срок: 1 месяц\n\n"
         f"Реквизиты платежа:\n"
-        f"`{CARD_NUMBER}`\n\n"
-        f"1️⃣ Оплатите по карте выше\n"
-        f"2️⃣ Загрузите скриншот платежа\n"
-        f"3️⃣ Нажмите кнопку ниже\n\n"
+        f"<code>{CARD_NUMBER}</code>\n\n"
+        f"1. Оплатите по карте выше\n"
+        f"2. Загрузите скриншот платежа\n"
+        f"3. Нажмите кнопку ниже\n\n"
         f"После проверки администратором вам выдадут доступ.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=buy_vpn_menu()
     )
 
@@ -52,7 +52,7 @@ async def on_upload_payment(callback: types.CallbackQuery, state: FSMContext) ->
     """Запрос на загрузку скриншота платежа."""
     await state.set_state(PaymentStates.waiting_for_screenshot)
     await callback.message.edit_text(
-        "📸 **Загрузите скриншот платежа**\n\n"
+        "Загрузите скриншот платежа\n\n"
         "Отправьте фото чека или скриншота с подтверждением платежа.",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="Отмена", callback_data="buy_vpn")]
@@ -96,7 +96,7 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext, p
     
     if not uuid_str:
         await callback.message.edit_text(
-            "Ошибка при создании VPN. Попробуйте позже или свяжитесь с админом."
+            "Ошибка при создании VPN. Попробуйте позже или свяжитесь с администратором."
         )
         await state.clear()
         return
@@ -115,10 +115,10 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext, p
     
     await callback.message.edit_text(
         f"Заявка создана!\n\n"
-        f"ID заявки: `{payment_id}`\n\n"
+        f"ID заявки: <code>{payment_id}</code>\n\n"
         f"Ожидайте проверки администратора.\n\n"
         f"Вам придет уведомление когда заявка будет рассмотрена.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
         ])
@@ -142,7 +142,6 @@ async def on_admin_menu(callback: types.CallbackQuery) -> None:
     await callback.message.edit_text(
         "Админ Панель\n\n"
         "Выберите действие:",
-        parse_mode="Markdown",
         reply_markup=admin_menu()
     )
 
@@ -245,20 +244,22 @@ async def on_approve_payment(callback: types.CallbackQuery) -> None:
             link = generate_vless_link(user["uuid"], user["email"])
             await callback.bot.send_message(
                 payment["tg_id"],
-                f"Ваш платёж одобрен!\n\n"
+                f"Ваш платеж одобрен!\n\n"
                 f"VPN готов к использованию!\n\n"
                 f"Ваша ссылка:\n\n"
-                f"{link}\n\n"
+                f"<code>{link}</code>\n\n"
                 f"Используйте её в любом клиенте для создания подключения.",
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения пользователю: {e}")
     
-    await callback.answer("Платёж одобрен!", show_alert=True)
-    # Переходим к предыдущей заявке или в админ меню
-    await callback.message.edit_text("Загружаю следующую заявку...")
-    await on_admin_payments(callback)
+    await callback.answer("Платеж одобрен!", show_alert=True)
+    # Отправляем сообщение с уведомлением о следующей заявке
+    await callback.bot.send_message(
+        settings.admin_id,
+        "Переход к следующей заявке..."
+    )
 
 
 @router.callback_query(F.data.startswith("reject_payment_"))
@@ -282,18 +283,19 @@ async def on_reject_payment(callback: types.CallbackQuery) -> None:
     try:
         await callback.bot.send_message(
             payment["tg_id"],
-            f"Ваш платёж отклонен\n\n"
+            f"Ваш платеж отклонен\n\n"
             f"Проверьте скриншот платежа и попробуйте отправить его заново.\n"
-            f"Если у вас есть вопросы, напишите администратору.",
-            parse_mode="Markdown"
+            f"Если у вас есть вопросы, напишите администратору."
         )
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения пользователю: {e}")
     
-    await callback.answer("Платёж отклонен!", show_alert=True)
-    # Переходим к следующей заявке или в админ меню
-    await callback.message.edit_text("Загружаю следующую заявку...")
-    await on_admin_payments(callback)
+    await callback.answer("Платеж отклонен!", show_alert=True)
+    # Отправляем сообщение с уведомлением о следующей заявке
+    await callback.bot.send_message(
+        settings.admin_id,
+        "Переход к следующей заявке..."
+    )
 
 
 @router.callback_query(F.data == "admin_users")
@@ -308,7 +310,6 @@ async def on_admin_users(callback: types.CallbackQuery) -> None:
     if not users:
         await callback.message.edit_text(
             "Пользователей нет",
-            parse_mode="Markdown",
             reply_markup=admin_menu()
         )
         return
@@ -316,9 +317,9 @@ async def on_admin_users(callback: types.CallbackQuery) -> None:
     text = f"Все пользователи ({len(users)} всего)\n\n"
     
     for user in users[:20]:  # Показываем первых 20
-        status_emoji = "✅" if user.get("status", "active") == "active" else "⏳"
+        status_symbol = "OK" if user.get("status", "active") == "active" else "WAIT"
         text += (
-            f"{status_emoji} {user.get('username', 'unknown')}\n"
+            f"{status_symbol} {user.get('username', 'unknown')}\n"
             f"   ID: {user['tg_id']}\n"
             f"   Email: {user['email']}\n\n"
         )
@@ -344,8 +345,7 @@ async def admin_command(message: types.Message) -> None:
     
     await message.answer(
         "Добро пожаловать в админ панель!",
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
+        reply_markup=builder.as_markup()
     )
 
 
@@ -371,9 +371,8 @@ async def notify_admin_about_payment(bot: Bot, payment_id: str, tg_id: int, user
             f"Новая заявка на оплату\n\n"
             f"{username}\n"
             f"ID: {tg_id}\n"
-            f"Заявка: `{payment_id}`\n"
+            f"Заявка: <code>{payment_id}</code>\n"
             f"{payment['created_at'][:19]}\n\n"
-            f"Пожалуйста, проверьте скриншот платежа и примите решение."
         )
         
         # Отправляем фото с кнопками
@@ -381,7 +380,7 @@ async def notify_admin_about_payment(bot: Bot, payment_id: str, tg_id: int, user
             settings.admin_id,
             photo=payment["screenshot_file_id"],
             caption=text,
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
     except Exception as e:
