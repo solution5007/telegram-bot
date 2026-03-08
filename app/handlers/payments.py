@@ -33,10 +33,10 @@ class PaymentStates(StatesGroup):
 async def on_buy_vpn(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Начало процесса покупки VPN."""
     await callback.message.edit_text(
-        f"💳 **VPN Подписка**\n\n"
+        f"VPN Подписка\n\n"
         f"Стоимость: {PAYMENT_AMOUNT} ₽\n"
         f"Срок: 1 месяц\n\n"
-        f"📱 **Реквизиты платежа:**\n"
+        f"Реквизиты платежа:\n"
         f"`{CARD_NUMBER}`\n\n"
         f"1️⃣ Оплатите по карте выше\n"
         f"2️⃣ Загрузите скриншот платежа\n"
@@ -55,7 +55,7 @@ async def on_upload_payment(callback: types.CallbackQuery, state: FSMContext) ->
         "📸 **Загрузите скриншот платежа**\n\n"
         "Отправьте фото чека или скриншота с подтверждением платежа.",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="❌ Отмена", callback_data="buy_vpn")]
+            [types.InlineKeyboardButton(text="Отмена", callback_data="buy_vpn")]
         ])
     )
 
@@ -64,7 +64,7 @@ async def on_upload_payment(callback: types.CallbackQuery, state: FSMContext) ->
 async def on_screenshot_received(message: types.Message, state: FSMContext) -> None:
     """Получение скриншота платежа."""
     if not message.photo:
-        await message.answer("❌ Пожалуйста, отправьте фото/изображение.")
+        await message.answer("Пожалуйста, отправьте фото/изображение.")
         return
     
     # Берем самое большое изображение
@@ -73,7 +73,7 @@ async def on_screenshot_received(message: types.Message, state: FSMContext) -> N
     await state.set_state(PaymentStates.waiting_for_payment_confirmation)
     
     await message.answer(
-        "✅ Скриншот получен!\n\n"
+        "Скриншот получен!\n\n"
         "Нажмите подтверждение, чтобы отправить заявку на проверку.",
         reply_markup=payment_confirmation_menu()
     )
@@ -86,17 +86,17 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext, p
     screenshot_file_id = data.get("screenshot_file_id")
     
     if not screenshot_file_id:
-        await callback.message.edit_text("❌ Ошибка: скриншот не найден.")
+        await callback.message.edit_text("Ошибка: скриншот не найден.")
         return
     
     # Создаем VPN клиента
-    await callback.message.edit_text("⏳ Создаю VPN и отправляю заявку на проверку...")
+    await callback.message.edit_text("Создаю VPN и отправляю заявку на проверку...")
     
     uuid_str, email = await panel.add_client(callback.from_user.id, callback.from_user.username)
     
     if not uuid_str:
         await callback.message.edit_text(
-            "❌ Ошибка при создании VPN. Попробуйте позже или свяжитесь с админом."
+            "Ошибка при создании VPN. Попробуйте позже или свяжитесь с админом."
         )
         await state.clear()
         return
@@ -114,13 +114,13 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext, p
     payment_id = await db.create_payment_request(callback.from_user.id, screenshot_file_id)
     
     await callback.message.edit_text(
-        f"✅ **Заявка создана!**\n\n"
+        f"Заявка создана!\n\n"
         f"ID заявки: `{payment_id}`\n\n"
-        f"Ожидайте проверки администратора. Это может занять от 5 минут до 24 часов.\n\n"
+        f"Ожидайте проверки администратора.\n\n"
         f"Вам придет уведомление когда заявка будет рассмотрена.",
         parse_mode="Markdown",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+            [types.InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
         ])
     )
     
@@ -136,11 +136,11 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext, p
 async def on_admin_menu(callback: types.CallbackQuery) -> None:
     """Админ меню."""
     if callback.from_user.id != settings.admin_id:
-        await callback.answer("❌ Доступ запрещен", show_alert=True)
+        await callback.answer("Доступ запрещен", show_alert=True)
         return
     
     await callback.message.edit_text(
-        "⚙️ **Админ Панель**\n\n"
+        "Админ Панель\n\n"
         "Выберите действие:",
         parse_mode="Markdown",
         reply_markup=admin_menu()
@@ -151,7 +151,7 @@ async def on_admin_menu(callback: types.CallbackQuery) -> None:
 async def on_admin_payments(callback: types.CallbackQuery) -> None:
     """Список заявок на платежи."""
     if callback.from_user.id != settings.admin_id:
-        await callback.answer("❌ Доступ запрещен", show_alert=True)
+        await callback.answer("Доступ запрещен", show_alert=True)
         return
     
     # Парсим номер страницы
@@ -166,7 +166,7 @@ async def on_admin_payments(callback: types.CallbackQuery) -> None:
     
     if not payments:
         await callback.message.edit_text(
-            "✅ Заявок на оплату нет\n\nВсе платежи уже обработаны.",
+            "Заявок на оплату нет\n\nВсе платежи уже обработаны.",
             reply_markup=admin_menu()
         )
         return
@@ -179,7 +179,7 @@ async def on_admin_payments(callback: types.CallbackQuery) -> None:
     
     if not page_payments:
         await callback.message.edit_text(
-            "✅ Заявок на оплату нет\n\nВсе платежи уже обработаны.",
+            "Заявок на оплату нет\n\nВсе платежи уже обработаны.",
             reply_markup=admin_menu()
         )
         return
@@ -189,8 +189,8 @@ async def on_admin_payments(callback: types.CallbackQuery) -> None:
     username = user.get("username", "unknown") if user else "unknown"
     
     text = (
-        f"📋 Заявка на оплату (#{page + 1} из {len(payments)})\n\n"
-        f"👤 Пользователь: {username}\n"
+        f"Заявка на оплату (#{page + 1} из {len(payments)})\n\n"
+        f"Пользователь: {username}\n"
         f"ID: {payment['tg_id']}\n"
         f"Дата: {payment['created_at'][:19]}\n\n"
         f"Выберите действие:"
@@ -199,21 +199,21 @@ async def on_admin_payments(callback: types.CallbackQuery) -> None:
     # Создаем клавиатуру с кнопками
     builder = InlineKeyboardBuilder()
     builder.row(
-        types.InlineKeyboardButton(text="✅ Одобрить", callback_data=f"approve_payment_{payment_id}"),
-        types.InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_payment_{payment_id}")
+        types.InlineKeyboardButton(text="Одобрить", callback_data=f"approve_payment_{payment_id}"),
+        types.InlineKeyboardButton(text="Отклонить", callback_data=f"reject_payment_{payment_id}")
     )
     
     # Кнопки навигации
     nav_buttons = []
     if page > 0:
-        nav_buttons.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_payments_{page - 1}"))
+        nav_buttons.append(types.InlineKeyboardButton(text="Назад", callback_data=f"admin_payments_{page - 1}"))
     if (page + 1) * page_size < len(payments):
-        nav_buttons.append(types.InlineKeyboardButton(text="➡️ Далее", callback_data=f"admin_payments_{page + 1}"))
+        nav_buttons.append(types.InlineKeyboardButton(text="Далее", callback_data=f"admin_payments_{page + 1}"))
     
     if nav_buttons:
         builder.row(*nav_buttons)
     
-    builder.row(types.InlineKeyboardButton(text="🏠 Админ меню", callback_data="admin_menu"))
+    builder.row(types.InlineKeyboardButton(text="Админ меню", callback_data="admin_menu"))
     
     await callback.message.edit_text(
         text,
@@ -225,14 +225,14 @@ async def on_admin_payments(callback: types.CallbackQuery) -> None:
 async def on_approve_payment(callback: types.CallbackQuery) -> None:
     """Одобрить платёж."""
     if callback.from_user.id != settings.admin_id:
-        await callback.answer("❌ Доступ запрещен", show_alert=True)
+        await callback.answer("Доступ запрещен", show_alert=True)
         return
     
     payment_id = callback.data.replace("approve_payment_", "")
     payment = await db.get_payment_request(payment_id)
     
     if not payment:
-        await callback.answer("❌ Заявка не найдена", show_alert=True)
+        await callback.answer("Заявка не найдена", show_alert=True)
         return
     
     # Одобряем платёж
@@ -245,19 +245,19 @@ async def on_approve_payment(callback: types.CallbackQuery) -> None:
             link = generate_vless_link(user["uuid"], user["email"])
             await callback.bot.send_message(
                 payment["tg_id"],
-                f"✅ **Ваш платёж одобрен!**\n\n"
+                f"Ваш платёж одобрен!\n\n"
                 f"VPN готов к использованию!\n\n"
-                f"🔑 **Ваша ссылка:**\n\n"
+                f"Ваша ссылка:\n\n"
                 f"{link}\n\n"
-                f"Используйте её в приложении V2RayNG, NekoBox или Hiddify.",
+                f"Используйте её в любом клиенте для создания подключения.",
                 parse_mode="Markdown"
             )
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки сообщения пользователю: {e}")
+        logger.error(f"Ошибка отправки сообщения пользователю: {e}")
     
-    await callback.answer("✅ Платёж одобрен!", show_alert=True)
+    await callback.answer("Платёж одобрен!", show_alert=True)
     # Переходим к предыдущей заявке или в админ меню
-    await callback.message.edit_text("⏳ Загружаю следующую заявку...")
+    await callback.message.edit_text("Загружаю следующую заявку...")
     await on_admin_payments(callback)
 
 
@@ -265,14 +265,14 @@ async def on_approve_payment(callback: types.CallbackQuery) -> None:
 async def on_reject_payment(callback: types.CallbackQuery) -> None:
     """Отклонить платёж."""
     if callback.from_user.id != settings.admin_id:
-        await callback.answer("❌ Доступ запрещен", show_alert=True)
+        await callback.answer("Доступ запрещен", show_alert=True)
         return
     
     payment_id = callback.data.replace("reject_payment_", "")
     payment = await db.get_payment_request(payment_id)
     
     if not payment:
-        await callback.answer("❌ Заявка не найдена", show_alert=True)
+        await callback.answer("Заявка не найдена", show_alert=True)
         return
     
     # Отклоняем платёж
@@ -282,17 +282,17 @@ async def on_reject_payment(callback: types.CallbackQuery) -> None:
     try:
         await callback.bot.send_message(
             payment["tg_id"],
-            f"❌ **Ваш платёж отклонен**\n\n"
+            f"Ваш платёж отклонен\n\n"
             f"Проверьте скриншот платежа и попробуйте отправить его заново.\n"
             f"Если у вас есть вопросы, напишите администратору.",
             parse_mode="Markdown"
         )
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки сообщения пользователю: {e}")
+        logger.error(f"Ошибка отправки сообщения пользователю: {e}")
     
-    await callback.answer("❌ Платёж отклонен!", show_alert=True)
+    await callback.answer("Платёж отклонен!", show_alert=True)
     # Переходим к следующей заявке или в админ меню
-    await callback.message.edit_text("⏳ Загружаю следующую заявку...")
+    await callback.message.edit_text("Загружаю следующую заявку...")
     await on_admin_payments(callback)
 
 
@@ -300,20 +300,20 @@ async def on_reject_payment(callback: types.CallbackQuery) -> None:
 async def on_admin_users(callback: types.CallbackQuery) -> None:
     """Список всех пользователей."""
     if callback.from_user.id != settings.admin_id:
-        await callback.answer("❌ Доступ запрещен", show_alert=True)
+        await callback.answer("Доступ запрещен", show_alert=True)
         return
     
     users = await db.get_all_users()
     
     if not users:
         await callback.message.edit_text(
-            "👥 **Пользователей нет**",
+            "Пользователей нет",
             parse_mode="Markdown",
             reply_markup=admin_menu()
         )
         return
     
-    text = f"👥 Все пользователи ({len(users)} всего)\n\n"
+    text = f"Все пользователи ({len(users)} всего)\n\n"
     
     for user in users[:20]:  # Показываем первых 20
         status_emoji = "✅" if user.get("status", "active") == "active" else "⏳"
@@ -336,14 +336,14 @@ async def on_admin_users(callback: types.CallbackQuery) -> None:
 async def admin_command(message: types.Message) -> None:
     """Команда /admin для входа в админ панель."""
     if message.from_user.id != settings.admin_id:
-        await message.answer("❌ Доступ запрещен")
+        await message.answer("Доступ запрещен")
         return
     
     builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="⚙️ Админ Панель", callback_data="admin_menu"))
+    builder.row(types.InlineKeyboardButton(text="Админ Панель", callback_data="admin_menu"))
     
     await message.answer(
-        "🔐 **Добро пожаловать в админ панель!**",
+        "Добро пожаловать в админ панель!",
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
@@ -363,16 +363,16 @@ async def notify_admin_about_payment(bot: Bot, payment_id: str, tg_id: int, user
         # Создаем кнопки для одобрения/отклонения
         builder = InlineKeyboardBuilder()
         builder.row(
-            types.InlineKeyboardButton(text="✅ Одобрить", callback_data=f"approve_payment_{payment_id}"),
-            types.InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_payment_{payment_id}")
+            types.InlineKeyboardButton(text="Одобрить", callback_data=f"approve_payment_{payment_id}"),
+            types.InlineKeyboardButton(text="Отклонить", callback_data=f"reject_payment_{payment_id}")
         )
         
         text = (
-            f"🆕 **Новая заявка на оплату**\n\n"
-            f"👤 {username}\n"
-            f"🆔 ID: {tg_id}\n"
-            f"📋 Заявка: `{payment_id}`\n"
-            f"📅 {payment['created_at'][:19]}\n\n"
+            f"Новая заявка на оплату\n\n"
+            f"{username}\n"
+            f"ID: {tg_id}\n"
+            f"Заявка: `{payment_id}`\n"
+            f"{payment['created_at'][:19]}\n\n"
             f"Пожалуйста, проверьте скриншот платежа и примите решение."
         )
         
@@ -385,4 +385,4 @@ async def notify_admin_about_payment(bot: Bot, payment_id: str, tg_id: int, user
             reply_markup=builder.as_markup()
         )
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки уведомления админу: {e}")
+        logger.error(f"Ошибка отправки уведомления админу: {e}")

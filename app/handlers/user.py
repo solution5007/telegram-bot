@@ -20,9 +20,9 @@ async def cmd_start(message: types.Message, panel: PanelAPI) -> None:
     has_active_vpn = user and user_status == "active"
 
     if has_active_vpn:
-        text = "С возвращением! 👋 Управление твоим VPN ниже 👇"
+        text = "С возвращением! Управление твоим VPN ниже"
     else:
-        text = "Привет! 👋 Нажми кнопку ниже, чтобы купить VPN-подключение."
+        text = "Привет! Нажми кнопку ниже, чтобы купить VPN-подключение."
 
     await message.answer(text, reply_markup=main_menu(has_vpn=has_active_vpn))
 
@@ -35,9 +35,9 @@ async def on_main_menu(callback: types.CallbackQuery) -> None:
     has_active_vpn = user and user_status == "active"
     
     if has_active_vpn:
-        text = "🏠 **Главное меню**\n\nВыберите действие:"
+        text = "Главное меню\n\nВыберите действие:"
     else:
-        text = "🏠 **Главное меню**\n\nУ вас еще нет активного VPN."
+        text = "Главное меню\n\nУ вас еще нет активного VPN."
     
     await callback.message.edit_text(
         text,
@@ -48,11 +48,11 @@ async def on_main_menu(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data == "profile")
 async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
-    await callback.message.edit_text("⏳ Загружаю статистику…")
+    await callback.message.edit_text("Загружаю статистику…")
 
     user = await db.get_user(callback.from_user.id)
     if not user:
-        await callback.message.edit_text("❌ Пользователь не найден в базе.")
+        await callback.message.edit_text("Пользователь не найден в базе.")
         return
 
     uuid_str, email = user["uuid"], user["email"]
@@ -63,17 +63,17 @@ async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
 
     link = generate_vless_link(uuid_str, email)
     
-    status_text = "✅ Активен" if user_status == "active" else "⏳ Ожидание подтверждения платежа"
+    status_text = "Активен" if user_status == "active" else "Ожидание подтверждения платежа"
     
     message_text = (
-        f"📊 **Личный кабинет**\n\n"
-        f"👤 **Пользователь:** {email}\n"
-        f"📱 **Статус:** {status_text}\n"
-        f"🌐 **Потрачено трафика:** {total_gb} GB\n"
-        f"📋 **План:** Стандартный (1 месяц)\n\n"
-        f"🔑 **Твой ключ подключения:**\n\n"
+        f"Личный кабинет\n\n"
+        f"Пользователь: {email}\n"
+        f"Статус: {status_text}\n"
+        f"Потрачено трафика: {total_gb} GB\n"
+        f"План: Стандартный (1 месяц)\n\n"
+        f"Твой ключ подключения:\n\n"
         f"{link}\n\n"
-        f"Скопируй ссылку выше и вставь в приложение V2RayNG, NekoBox или Hiddify."
+        f"Используйте её в любом клиенте для создания подключения."
     )
     
     await callback.message.edit_text(

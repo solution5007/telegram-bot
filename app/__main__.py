@@ -35,14 +35,14 @@ async def main() -> None:
     await init_db()
     
     # ✅ ЛОГИН В ПАНЕЛЬ ДО ЗАПУСКА БОТА
-    logger.info("🔐 Логинюсь в панель...")
+    logger.info("Логинюсь в панель...")
     session = await panel._ensure_session()
     if not session:
-        logger.error("❌ Не удалось подключиться к панели. Проверьте настройки config.py")
+        logger.error("Не удалось подключиться к панели. Проверьте настройки config.py")
         return
-    logger.info("✅ Панель готова к работе!")
+    logger.info("Панель готова к работе!")
     
-    logger.info("🚀 Бот запущен и готов к работе!")
+    logger.info("Бот запущен и готов к работе!")
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
@@ -51,7 +51,7 @@ async def main() -> None:
         await panel.close()
         await close_db()
         await bot.session.close()
-        logger.info("👋 Бот остановлен.")
+        logger.info("Бот остановлен.")
 
 
 if __name__ == "__main__":

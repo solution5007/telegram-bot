@@ -45,7 +45,7 @@ class PanelAPI:
             target = datetime.datetime.now() + datetime.timedelta(seconds=offset * 30)
             return totp.at(target)
         except Exception as exc:
-            logger.error("❌ Ошибка генерации TOTP: %s", exc)
+            logger.error("Ошибка генерации TOTP: %s", exc)
             return None
 
     async def _ensure_session(self) -> Optional[aiohttp.ClientSession]:
@@ -87,7 +87,7 @@ class PanelAPI:
                     async with self._session.post(login_url, data=payload) as resp:
                         text = await resp.text()
                         if resp.status == 200 and '"success":true' in text.lower():
-                            logger.info("✅ Успешный вход в панель!")
+                            logger.info("Успешный вход в панель!")
                             # # Логируем куки для диагностики
                             # cookies = self._session.cookie_jar.filter_cookies(login_url)
                             # logger.info("🍪 Куки после логина: %s", dict(cookies))
@@ -95,9 +95,9 @@ class PanelAPI:
                             await asyncio.sleep(1)
                             return self._session
                 except Exception as exc:
-                    logger.error("❌ Ошибка сети при логине: %s", exc)
+                    logger.error("Ошибка сети при логине: %s", exc)
 
-            logger.error("❌ Не удалось войти в панель ни с одним TOTP‑кодом.")
+            logger.error("Не удалось войти в панель ни с одним TOTP‑кодом.")
             return None
 
     # ── API‑методы ───────────────────────────────────────────────────────
@@ -113,25 +113,25 @@ class PanelAPI:
         try:
             async with session.get(url) as resp:
                 if resp.status != 200:
-                    logger.error("❌ Сервер ответил %s", resp.status)
+                    logger.error("Сервер ответил %s", resp.status)
                     return None
                 data = await resp.json(content_type=None)
 
             if not data.get("success"):
-                logger.error("❌ API ошибка: %s", data.get("msg"))
+                logger.error("API ошибка: %s", data.get("msg"))
                 return None
 
             for ib in data.get("obj", []):
                 proto = ib.get("protocol", "").lower()
                 logger.info("  🔹 id=%s  proto=%s  remark=%s", ib.get("id"), proto, ib.get("remark"))
                 if proto == "vless":
-                    logger.info("✅ Выбран VLESS inbound id=%s",    )
+                    logger.info("Выбран VLESS inbound id=%s",    )
                     await asyncio.sleep(1)
                     return ib["id"]
 
-            logger.warning("⚠️ VLESS inbound не найден — создай его в панели.")
+            logger.warning("VLESS inbound не найден — создай его в панели.")
         except Exception as exc:
-            logger.error("⚠️ Ошибка при запросе инбаундов: %s", exc)
+            logger.error("Ошибка при запросе инбаундов: %s", exc)
 
         return None
 
@@ -176,12 +176,12 @@ class PanelAPI:
             async with session.post(url, json=payload) as resp:
                 data = await resp.json()
                 if data.get("success"):
-                    logger.info("✅ Клиент %s создан!", email)
+                    logger.info("Клиент %s создан!", email)
                     await asyncio.sleep(1)
                     return client_uuid, email
-                logger.error("❌ Ошибка addClient: %s", data.get("msg"))
+                logger.error("Ошибка addClient: %s", data.get("msg"))
         except Exception as exc:
-            logger.error("❌ Ошибка API addClient: %s", exc)
+            logger.error("Ошибка API addClient: %s", exc)
 
         return None, None
 
@@ -192,7 +192,7 @@ class PanelAPI:
             return 0, 0
 
         url = self._url(f"panel/api/inbounds/getClientTraffics/{email}")
-        logger.info("📊 Запрос трафика для %s…", email)
+        logger.info("Запрос трафика для %s…", email)
 
         try:
             async with session.get(url) as resp:
@@ -201,7 +201,7 @@ class PanelAPI:
                     await asyncio.sleep(1)
                     return data["obj"].get("up", 0), data["obj"].get("down", 0)
         except Exception as exc:
-            logger.error("❌ Ошибка получения трафика: %s", exc)
+            logger.error("Ошибка получения трафика: %s", exc)
 
         return 0, 0
 
@@ -210,4 +210,4 @@ class PanelAPI:
         """Корректно закрывает HTTP‑сессию."""
         if self._session and not self._session.closed:
             await self._session.close()
-            logger.info("🔒 HTTP‑сессия панели закрыта.")
+            logger.info("HTTP‑сессия панели закрыта.")

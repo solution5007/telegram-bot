@@ -57,7 +57,7 @@ def _load() -> dict:
             _save(data)
         return data
     except (json.JSONDecodeError, OSError) as exc:
-        logger.error("❌ Ошибка чтения базы данных: %s", exc)
+        logger.error("Ошибка чтения базы данных: %s", exc)
         return {"users": {}, "payments": {}}
 
 
@@ -66,19 +66,19 @@ def _save(data: dict) -> None:
     try:
         _path().write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError as exc:
-        logger.error("❌ Ошибка сохранения базы данных: %s", exc)
+        logger.error("Ошибка сохранения базы данных: %s", exc)
 
 
 async def init_db() -> None:
     """Создаёт файл БД, если его ещё нет."""
     if not _path().exists():
         _save({})
-    logger.info("📁 База данных инициализирована: %s", _path().resolve())
+    logger.info("База данных инициализирована: %s", _path().resolve())
 
 
 async def close_db() -> None:
     """Ничего закрывать не нужно — файловое хранилище."""
-    logger.info("📁 База данных закрыта.")
+    logger.info("База данных закрыта.")
 
 
 # ── CRUD ────────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ async def upsert_user(tg_id: int, username: str | None, uuid: str, email: str, s
         "plan": "standard",
     }
     _save(data)
-    logger.info("💾 Пользователь %s сохранён.", tg_id)
+    logger.info("Пользователь %s сохранён.", tg_id)
 
 
 async def get_all_users() -> list[dict]:
@@ -124,7 +124,7 @@ async def create_payment_request(tg_id: int, screenshot_file_id: str) -> str:
         "admin_note": "",
     }
     _save(data)
-    logger.info("💳 Заявка на платёж %s создана для пользователя %s", payment_id, tg_id)
+    logger.info("Заявка на платёж %s создана для пользователя %s", payment_id, tg_id)
     return payment_id
 
 
@@ -156,7 +156,7 @@ async def approve_payment(payment_id: str, admin_note: str = "") -> bool:
         data["users"][tg_id]["status"] = "active"
     
     _save(data)
-    logger.info("✅ Платёж %s одобрен", payment_id)
+    logger.info("Платёж %s одобрен", payment_id)
     return True
 
 
@@ -170,7 +170,7 @@ async def reject_payment(payment_id: str, admin_note: str = "") -> bool:
     payment["status"] = "rejected"
     payment["admin_note"] = admin_note
     _save(data)
-    logger.info("❌ Платёж %s отклонён", payment_id)
+    logger.info("Платёж %s отклонён", payment_id)
     return True
 
 
