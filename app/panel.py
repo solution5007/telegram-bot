@@ -89,17 +89,12 @@ class PanelAPI:
                     text = await resp.text()
                     if resp.status == 200 and '"success":true' in text.lower():
                         logger.info("Успешный вход в панель!")
-                        # # Логируем куки для диагностики
-                        # cookies = self._session.cookie_jar.filter_cookies(login_url)
-                        # logger.info("🍪 Куки после логина: %s", dict(cookies))
-                        # Даём серверу время зарегистрировать сессию (анти-фрод защита)
-#                            await asyncio.sleep(1)
-                            return self._session
-                except Exception as exc:
-                    logger.error("Ошибка сети при логине: %s", exc)
+                        return self._session
+            except Exception as exc:
+                logger.error("Ошибка сети при логине: %s", exc)
 
-            logger.error("Не удалось войти в панель ни с одним TOTP‑кодом.")
-            return None
+        logger.error("Не удалось войти в панель ни с одним TOTP‑кодом.")
+        return None
 
     # ── API‑методы ───────────────────────────────────────────────────────
     async def get_vless_inbound_id(self) -> Optional[int]:
