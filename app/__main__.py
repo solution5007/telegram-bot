@@ -1,4 +1,5 @@
-"""Точка входа: ``python -m app``."""
+#main.py
+"""Точка входа: python -m app"""
 
 import asyncio
 import logging
@@ -7,9 +8,10 @@ from aiogram import Bot, Dispatcher
 
 from app.config import settings
 from app.database import init_db, close_db
-from app.handlers.user import router as user_router
-from app.handlers.payments import router as payments_router
 from app.panel import PanelAPI
+
+# Красиво импортируем все наши разделенные роутеры
+from app.handlers import user, payments, admin, admin_payments
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,17 +26,21 @@ async def main() -> None:
     dp = Dispatcher()
     panel = PanelAPI()
 
-    # Регистрация роутеров
-    dp.include_router(payments_router)
-    dp.include_router(user_router)
-
-    # Middleware‑like: прокидываем panel и bot во все хендлеры через kwargs
+    # Регистрация роутеров (СТРОГО ПО ОДНОМУ РАЗУ)
+    # Порядок имеет значение: сначала админка, потом юзерские функции
+    # ПРАВИЛЬНЫЙ ПОРЯДОК:
+    dp.include_router(admin.router)
+    dp.include_router(admin_payments.router) 
+    dp.include_router(payments.router)
+    dp.include_router(user.router)
+      
+  # Middleware-like: прокидываем panel и bot во все хендлеры через kwargs
     dp["panel"] = panel
     dp["bot"] = bot
 
     await init_db()
     
-    # ✅ ЛОГИН В ПАНЕЛЬ ДО ЗАПУСКА БОТА
+    # ЛОГИН В ПАНЕЛЬ ДО ЗАПУСКА БОТА
     logger.info("Логинюсь в панель...")
     session = await panel._ensure_session()
     if not session:

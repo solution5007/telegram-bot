@@ -1,19 +1,20 @@
 FROM python:3.12-slim
 
-# Не буферизовать stdout/stderr — логи сразу попадают в docker logs
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-WORKDIR /bot
+# Сделаем рабочую папку /app, чтобы не путаться с папкой бота
+WORKDIR /app
 
-# Сначала копируем requirements — кэшируем слой с зависимостями
+# Копируем зависимости
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем исходники
-COPY app/ app/
+# Копируем ВЕСЬ проект (включая папку app и файлы в корне)
+COPY . .
 
-# Том для SQLite базы
-VOLUME ["/data"]
+# Создаем папку /bot, которую так хочет твой код для базы данных
+RUN mkdir -p /bot
 
+# Запускаем из корня /app
 CMD ["python", "-m", "app"]

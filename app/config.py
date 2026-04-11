@@ -1,3 +1,4 @@
+#config.py
 """Настройки приложения через pydantic‑settings (читает .env)."""
 
 from pydantic_settings import BaseSettings

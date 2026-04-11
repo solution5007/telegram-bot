@@ -1,3 +1,4 @@
+#panel.py
 """Клиент для 3x‑ui панели (aiohttp + TOTP 2FA)."""
 
 from __future__ import annotations
@@ -49,50 +50,50 @@ class PanelAPI:
             return None
 
     async def _ensure_session(self) -> Optional[aiohttp.ClientSession]:
-            """Возвращает авторизованную aiohttp‑сессию (создаёт при необходимости)."""
-            if self._session and not self._session.closed:
-                return self._session
+        """Возвращает авторизованную aiohttp‑сессию (создаёт при необходимости)."""
+        if self._session and not self._session.closed:
+            return self._session
 
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
-                "Accept": "application/json, text/plain, */*",
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": f"{self._base_url}/{self._root}/panel/inbounds",
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json, text/plain, */*",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": f"{self._base_url}/{self._root}/panel/inbounds",
+        }
+        connector = aiohttp.TCPConnector(ssl=False)
+        # unsafe=True — разрешает хранить куки от IP-адресов (не только от доменов).
+        # Без этого aiohttp молча дропает Set-Cookie после логина, и все
+        # следующие запросы идут без авторизации → 404.
+        cookie_jar = aiohttp.CookieJar(unsafe=True)
+        self._session = aiohttp.ClientSession(connector=connector, headers=headers, cookie_jar=cookie_jar)
+
+        login_url = self._url("login")
+
+        for offset in (0, -1, 1):
+            code = self._totp_code(offset)
+            if code is None:
+                continue
+
+            payload = {
+                "username": settings.panel_username,
+                "password": settings.panel_password,
+                "loginSecret": code,
             }
-            connector = aiohttp.TCPConnector(ssl=False)
-            # unsafe=True — разрешает хранить куки от IP-адресов (не только от доменов).
-            # Без этого aiohttp молча дропает Set-Cookie после логина, и все
-            # следующие запросы идут без авторизации → 404.
-            cookie_jar = aiohttp.CookieJar(unsafe=True)
-            self._session = aiohttp.ClientSession(connector=connector, headers=headers, cookie_jar=cookie_jar)
-
-            login_url = self._url("login")
-
-            for offset in (0, -1, 1):
-                code = self._totp_code(offset)
-                if code is None:
-                    continue
-
-                payload = {
-                    "username": settings.panel_username,
-                    "password": settings.panel_password,
-                    "loginSecret": code,
-                }
-                logger.info("Попытка логина в панель (TOTP offset=%s)", offset)
-                try:
-                    async with self._session.post(login_url, data=payload) as resp:
-                        text = await resp.text()
-                        if resp.status == 200 and '"success":true' in text.lower():
-                            logger.info("Успешный вход в панель!")
-                            # # Логируем куки для диагностики
-                            # cookies = self._session.cookie_jar.filter_cookies(login_url)
-                            # logger.info("🍪 Куки после логина: %s", dict(cookies))
-                            # Даём серверу время зарегистрировать сессию (анти-фрод защита)
-                            await asyncio.sleep(1)
+            logger.info("Попытка логина в панель (TOTP offset=%s)", offset)
+            try:
+                async with self._session.post(login_url, data=payload) as resp:
+                    text = await resp.text()
+                    if resp.status == 200 and '"success":true' in text.lower():
+                        logger.info("Успешный вход в панель!")
+                        # # Логируем куки для диагностики
+                        # cookies = self._session.cookie_jar.filter_cookies(login_url)
+                        # logger.info("🍪 Куки после логина: %s", dict(cookies))
+                        # Даём серверу время зарегистрировать сессию (анти-фрод защита)
+#                            await asyncio.sleep(1)
                             return self._session
                 except Exception as exc:
                     logger.error("Ошибка сети при логине: %s", exc)
@@ -111,7 +112,7 @@ class PanelAPI:
         logger.info("Запрос инбаундов: %s", url)
 
         try:
-            async with session.get(url) as resp:
+            async with session.get(url, timeout = 5) as resp:
                 if resp.status != 200:
                     logger.error("Сервер ответил %s", resp.status)
                     return None
@@ -123,10 +124,12 @@ class PanelAPI:
 
             for ib in data.get("obj", []):
                 proto = ib.get("protocol", "").lower()
+                remark = ib.get("remark", "").lower()
                 logger.info("  id=%s  proto=%s  remark=%s", ib.get("id"), proto, ib.get("remark"))
-                if proto == "vless":
+                
+                if proto == "vless" or "vless" in remark:
                     logger.info("Выбран VLESS inbound id=%s", ib.get("id"))
-                    await asyncio.sleep(1)
+#                    await asyncio.sleep(1)
                     return ib["id"]
 
             logger.warning("VLESS inbound не найден — создай его в панели.")
@@ -137,9 +140,11 @@ class PanelAPI:
 
     async def add_client(self, tg_id: int, username: str | None) -> tuple[Optional[str], Optional[str]]:
         """Создаёт клиента в VLESS inbound. Возвращает ``(uuid, email)``."""
-        inbound_id = await self.get_vless_inbound_id()
-        if inbound_id is None:
-            return None, None
+#        inbound_id = await self.get_vless_inbound_id()
+#        if inbound_id is None:
+#            return None, None
+        
+        inbound_id = 1
 
         session = await self._ensure_session()
         if not session:
@@ -177,7 +182,7 @@ class PanelAPI:
                 data = await resp.json()
                 if data.get("success"):
                     logger.info("Клиент %s создан!", email)
-                    await asyncio.sleep(1)
+#                    await asyncio.sleep(1)
                     return client_uuid, email
                 logger.error("Ошибка addClient: %s", data.get("msg"))
         except Exception as exc:
@@ -198,13 +203,29 @@ class PanelAPI:
             async with session.get(url) as resp:
                 data = await resp.json()
                 if data.get("success") and data.get("obj"):
-                    await asyncio.sleep(1)
+#                    await asyncio.sleep(1)
                     return data["obj"].get("up", 0), data["obj"].get("down", 0)
         except Exception as exc:
             logger.error("Ошибка получения трафика: %s", exc)
 
         return 0, 0
 
+    async def get_inbounds(self) -> dict:
+        """Возвращает список всех инбаундов."""
+        session = await self._ensure_session()
+        if not session:
+            return {"success": False, "msg": "No session"}
+
+        url = self._url("panel/api/inbounds/list")
+        try:
+            async with session.get(url, timeout=5) as resp:
+                if resp.status != 200:
+                    return {"success": False, "msg": f"Status {resp.status}"}
+                return await resp.json(content_type=None)
+        except Exception as exc:
+            logger.error("Ошибка при запросе всех инбаундов: %s", exc)
+            return {"success": False, "msg": str(exc)}
+                
     # ── lifecycle ────────────────────────────────────────────────────────
     async def close(self) -> None:
         """Корректно закрывает HTTP‑сессию."""

@@ -1,3 +1,4 @@
+#user.py
 """Хендлеры пользовательских команд и callback‑запросов."""
 
 from aiogram import Router, types, F
@@ -6,7 +7,7 @@ from aiogram.filters import CommandStart
 from app import database as db
 from app.keyboards import main_menu, profile_menu, to_profile_menu
 from app.panel import PanelAPI
-from app.utils import generate_vless_link
+from app.utils.generate_vless import generate_vless_link
 
 router = Router(name="user")
 

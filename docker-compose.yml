@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     env_file: .env
     volumes:
-      - bot-data:/data        # SQLite хранится в named volume
+      - .:/app
     logging:
       driver: json-file
       options:

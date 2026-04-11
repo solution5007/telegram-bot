@@ -1,3 +1,4 @@
+#database.py
 """Хранилище пользователей в JSON-файле (без внешних зависимостей)."""
 
 from __future__ import annotations
@@ -70,9 +71,9 @@ def _save(data: dict) -> None:
 
 
 async def init_db() -> None:
-    """Создаёт файл БД, если его ещё нет."""
+    """Создаёт файл БД с правильной структурой, если его ещё нет."""
     if not _path().exists():
-        _save({})
+        _save({"users": {}, "payments": {}}) # Важна структура!
     logger.info("База данных инициализирована: %s", _path().resolve())
 
 
@@ -172,7 +173,27 @@ async def reject_payment(payment_id: str, admin_note: str = "") -> bool:
     _save(data)
     logger.info("Платёж %s отклонён", payment_id)
     return True
+    
+async def delete_payment_request(payment_id: str) -> bool:
+    """Полностью удаляет заявку на оплату из списка."""
+    data = _load() # Загружаем данные через твою функцию
+    
+    if payment_id in data.get("payments", {}):
+        # Удаляем заявку
+        payment = data["payments"].pop(payment_id)
+        tg_id = str(payment.get("tg_id"))
 
+        # Если пользователь был в статусе "ожидания", удаляем и его, 
+        # чтобы он мог подать заявку заново с чистого листа
+        if tg_id in data["users"] and data["users"][tg_id]["status"] == "pending_payment":
+            del data["users"][tg_id]
+            logger.info("Пользователь %s удален вместе с отклоненной заявкой.", tg_id)
+
+        _save(data) # Сохраняем файл через твою функцию
+        logger.info("Заявка %s полностью удалена из БД.", payment_id)
+        return True
+    
+    return False
 
 async def get_user_payment_status(tg_id: int) -> Optional[dict]:
     """Получить последнюю заявку пользователя."""
