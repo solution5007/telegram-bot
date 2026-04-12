@@ -1,6 +1,8 @@
 #admin.py
 from aiogram import Router, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.exceptions import TelegramBadRequest
 import html
@@ -19,6 +21,11 @@ from app.vpn_monitor.detect_anomalies import detect_anomalies
 
 router = Router(name="admin_panel")
 logger = logging.getLogger(__name__)
+
+# Определяем состояния для FSM (конечный автомат)
+class NotificationStates(StatesGroup):
+    """Состояния для отправки оповещений всем пользователям."""
+    waiting_for_message = State()  # Ожидаем ввода сообщения от админа
 
 router.message.filter(IsAdmin())
 router.callback_query.filter(IsAdmin())
@@ -59,6 +66,150 @@ async def handle_show_anomalies(callback: types.CallbackQuery):
             parse_mode="HTML",
             reply_markup=admin_menu()
         )
+        
+@router.callback_query(F.data == "send_notification")
+async def handle_send_notification(callback: types.CallbackQuery, state: FSMContext):
+    """Запускает процесс отправки оповещения всем пользователям."""
+    await callback.answer()
+    
+    # Предлагаем админу написать сообщение
+    cancel_btn = types.InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_notification")
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[cancel_btn]])
+    
+    await callback.message.answer(
+        "📝 <b>Отправить оповещение всем пользователям</b>\n\n"
+        "Напишите сообщение, которое будет отправлено всем пользователям:\n\n"
+        "<i>(Отмена: нажмите кнопку ниже или напишите /cancel)</i>",
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+    
+    # Переходим в состояние ожидания сообщения
+    await state.set_state(NotificationStates.waiting_for_message)
+
+
+@router.callback_query(F.data == "cancel_notification", StateFilter(NotificationStates.waiting_for_message))
+async def cancel_notification(callback: types.CallbackQuery, state: FSMContext):
+    """Отмена отправки оповещения."""
+    await callback.answer("❌ Отправка отменена", show_alert=True)
+    await state.clear()
+    
+    # Показываем админ меню
+    await callback.message.edit_text(
+        "<b>Админ Панель</b>\nВыберите действие:",
+        parse_mode="HTML",
+        reply_markup=admin_menu()
+    )
+
+
+@router.message(Command("cancel"), StateFilter(NotificationStates.waiting_for_message))
+async def cancel_notification_command(message: types.Message, state: FSMContext):
+    """Отмена отправки оповещения через команду /cancel."""
+    await message.answer("❌ Отправка отменена", reply_markup=admin_menu())
+    await state.clear()
+
+
+@router.message(StateFilter(NotificationStates.waiting_for_message))
+async def process_notification_message(message: types.Message, state: FSMContext):
+    """Обрабатывает сообщение администратора и отправляет его всем пользователям."""
+    
+    # Проверяем что это текстовое сообщение
+    if not message.text:
+        await message.answer("❌ Пожалуйста, напишите текстовое сообщение.")
+        return
+    
+    notification_text = message.text
+    
+    # Даем обратную связь админу
+    status_message = await message.answer(
+        "⏳ <b>Отправляю оповещение...</b>\n\n"
+        "Статус: инициализация...",
+        parse_mode="HTML"
+    )
+    
+    try:
+        # Получаем всех пользователей из БД
+        all_users = await db.get_all_users()
+        
+        if not all_users:
+            await status_message.edit_text(
+                "⚠️ <b>Нет зарегистрированных пользователей</b>",
+                parse_mode="HTML"
+            )
+            await state.clear()
+            return
+        
+        # Статистика отправки
+        successful = 0
+        failed = 0
+        failed_users = []
+        
+        # Отправляем сообщение каждому пользователю
+        for user_data in all_users:
+            try:
+                tg_id = user_data.get("tg_id")
+                username = user_data.get("username", "Unknown")
+                
+                if not tg_id:
+                    failed += 1
+                    continue
+                
+                # Отправляем сообщение с красивым форматированием
+                await message.bot.send_message(
+                    tg_id,
+                    f"📢 <b>Оповещение от администратора:</b>\n\n{notification_text}",
+                    parse_mode="HTML"
+                )
+                successful += 1
+                
+                # Обновляем статус каждые 5 отправок
+                if (successful + failed) % 5 == 0:
+                    await status_message.edit_text(
+                        f"⏳ <b>Отправляю оповещение...</b>\n\n"
+                        f"✅ Успешно: {successful}\n"
+                        f"❌ Ошибок: {failed}\n"
+                        f"📊 Всего: {len(all_users)}",
+                        parse_mode="HTML"
+                    )
+                    
+            except Exception as e:
+                failed += 1
+                tg_id = user_data.get("tg_id", "unknown")
+                failed_users.append((tg_id, str(e)[:50]))
+                logger.warning(f"Не удалось отправить сообщение пользователю {tg_id}: {e}")
+        
+        # Финальное сообщение со статистикой
+        final_text = f"""✅ <b>Оповещение отправлено!</b>
+
+📊 <b>Статистика отправки:</b>
+✅ Успешно доставлено: <b>{successful}</b>
+❌ Ошибок: <b>{failed}</b>
+📈 Всего пользователей: <b>{len(all_users)}</b>
+
+<i>Процент успеха: {round((successful / len(all_users) * 100), 1)}%</i>"""
+        
+        # Если были ошибки, добавляем информацию
+        if failed_users and len(failed_users) <= 10:
+            final_text += "\n\n<b>Пользователи, к которым не удалось доставить:</b>\n"
+            for user_id, error in failed_users[:10]:
+                final_text += f"• ID: {user_id} ({error})\n"
+        
+        await status_message.edit_text(final_text, parse_mode="HTML")
+        
+        # Логируем отправку
+        logger.info(f"Администратор отправил оповещение {successful} пользователям (ошибок: {failed})")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при отправке оповещений: {e}", exc_info=True)
+        await status_message.edit_text(
+            f"❌ <b>Ошибка при отправке:</b>\n\n{str(e)[:200]}",
+            parse_mode="HTML"
+        )
+    
+    finally:
+        # Выходим из состояния
+        await state.clear()
+
         
 @router.callback_query(F.data == "admin_users")
 async def on_show_all_users(callback: types.CallbackQuery, panel: PanelAPI):
