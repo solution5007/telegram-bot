@@ -17,5 +17,6 @@ bot_error.log
 run_bot.sh
 CHANGELOG_UPDATE.md
 .venv/
-vps_metrics.csv
+vpn_monitor/vps_metrics.csv
 nohup.out
+vps_metrics.csv
