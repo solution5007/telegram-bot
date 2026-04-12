@@ -27,7 +27,7 @@ def detect_anomalies(csv_file=None):
         df = pd.read_csv(FILE_NAME)
         
         if df.empty:
-            return "⚠️ Файл метрик пуст. Дождитесь накопления данных."
+            return "Файл метрик пуст. Дождитесь накопления данных."
         
         # Подготовка данных для анализа
         # Берём только числовые колонки (исключаем timestamp)
@@ -35,7 +35,7 @@ def detect_anomalies(csv_file=None):
         
         # Обучение модели Isolation Forest
         # contamination - это ожидаемая доля аномалий (примерно 2%)
-        model = IsolationForest(contamination=0.02, random_state=42)
+        model = IsolationForest(contamination=0.005, random_state=42)
         model.fit(X)
         
         # Поиск аномалий
@@ -45,25 +45,25 @@ def detect_anomalies(csv_file=None):
         # Вывод результатов
         anomalies = df[df['anomaly_score'] == -1]
         
-        result = "📊 <b>Результаты анализа аномалий:</b>\n\n"
-        result += f"📈 Всего записей: {len(df)}\n"
-        result += f"⚠️ Обнаружено аномалий: {len(anomalies)}\n"
-        result += f"✅ Нормальных записей: {len(df) - len(anomalies)}\n\n"
+        result = "<b>Результаты анализа аномалий:</b>\n\n"
+        result += f"Всего записей: {len(df)}\n"
+        result += f"Обнаружено аномалий: {len(anomalies)}\n"
+        result += f"Нормальных записей: {len(df) - len(anomalies)}\n\n"
         
         if not anomalies.empty:
-            result += "🚨 <b>Последние 5 аномалий:</b>\n<pre>"
+            result += "<b>Последние 5 аномалий:</b>\n<pre>"
             # Форматируем последние 5 аномалий
             for idx, row in anomalies[['timestamp', 'cpu_usage', 'ram_usage', 'disk_usage']].tail(5).iterrows():
                 result += f"\n⏰ {row['timestamp']}"
                 result += f"\n   CPU: {row['cpu_usage']:.1f}% | RAM: {row['ram_usage']:.1f}% | DISK: {row['disk_usage']:.1f}%"
             result += "</pre>\n"
         else:
-            result += "✅ Аномалии не обнаружены. Система работает стабильно!\n"
+            result += "Аномалии не обнаружены. Система работает стабильно!\n"
         
         return result
         
     except Exception as e:
-        return f"❌ Ошибка при анализе: {str(e)}"
+        return f"Ошибка при анализе: {str(e)}"
 
 
 if __name__ == "__main__":
