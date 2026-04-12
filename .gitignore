@@ -19,3 +19,4 @@ CHANGELOG_UPDATE.md
 .venv/
 vpn_monitor/vps_metrics.csv
 nohup.out
+vps_metrics.csv
