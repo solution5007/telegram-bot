@@ -23,11 +23,14 @@ async def notify_admin_about_payment(bot: Bot, payment_id: str, tg_id: int, user
             types.InlineKeyboardButton(text="Отклонить", callback_data=f"reject_payment_{payment_id}")
         )
         
+        period = payment.get("period", 1)
+        period_text = f"{period} месяц" + ("ов" if period != 1 else "")
         text = (
             f"🟢 <b>Новая заявка на оплату</b>\n\n"
             f"Пользователь: @{username}\n"
             f"ID: <code>{tg_id}</code>\n"
             f"Заявка: <code>{payment_id}</code>\n"
+            f"Период: {period_text}\n"
             f"Дата: {payment['created_at'][:19]}\n"
         )
         

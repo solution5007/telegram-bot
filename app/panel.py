@@ -133,7 +133,7 @@ class PanelAPI:
 
         return None
 
-    async def add_client(self, tg_id: int, username: str | None) -> tuple[Optional[str], Optional[str]]:
+    async def add_client(self, tg_id: int, username: str | None, expiry_time: int = 0) -> tuple[Optional[str], Optional[str]]:
         """Создаёт клиента в VLESS inbound. Возвращает ``(uuid, email)``."""
 #        inbound_id = await self.get_vless_inbound_id()
 #        if inbound_id is None:
@@ -159,7 +159,7 @@ class PanelAPI:
                             "email": email,
                             "limitIp": 0,
                             "totalGB": 0,
-                            "expiryTime": 0,
+                            "expiryTime": expiry_time,
                             "enable": True,
                             "tgId": str(tg_id),
                             "subId": "",

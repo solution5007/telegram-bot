@@ -167,8 +167,19 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
         user = await db.get_user(payment["tg_id"])
         username = user.get("username", f"user_{payment['tg_id']}") if user else f"user_{payment['tg_id']}"
         
-        # Создаем клиента в панели
-        uuid_str, email = await panel.add_client(payment["tg_id"], username)
+        # Рассчитываем expiry_time перед созданием клиента
+        period = payment.get("period", 1)
+        if period == 0:
+            expiry_ms = 0
+            expiry_iso = 0
+        else:
+            days = period * 30
+            expiry_datetime = datetime.now() + timedelta(days=days)
+            expiry_ms = int(expiry_datetime.timestamp() * 1000)
+            expiry_iso = expiry_datetime.isoformat()
+
+        # Создаем клиента в панели сразу с нужным expiry_time
+        uuid_str, email = await panel.add_client(payment["tg_id"], username, expiry_time=expiry_ms)
         
         if not uuid_str:
             if user and user.get("uuid"):
@@ -177,26 +188,8 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             else:
                 await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
                 return
-            
-        # Рассчитываем expiry_time
-        period = payment.get("period", 1)
-        
-        if period == 0:
-            # Безлимитная подписка
-            expiry_ms = 0
-            expiry_iso = 0
-        else:
-            # Ограниченная подписка
-            days = period * 30
-            expiry_datetime = datetime.now() + timedelta(days=days)
-            expiry_ms = int(expiry_datetime.timestamp() * 1000)
-            expiry_iso = expiry_datetime.isoformat()
-        
-        # Обновляем expiry time в панели
-        if not await panel.update_client_expiry(email, expiry_ms):
-            logger.warning(f"Не удалось обновить expiry time для {email}")
-        
-        # Записываем пользователя в БД как активного с expiry_time
+
+        # Если клиент создан, сохраняем expiry_date в БД
         await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)
         await db.approve_payment(payment_id, "Одобрено администратором")
         
