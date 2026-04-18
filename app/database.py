@@ -30,10 +30,12 @@ logger = logging.getLogger(__name__)
 #   "payments": {
 #       "payment_id": {
 #           "tg_id": 123456789,
+#           "type": "new",  # new, renewal
 #           "status": "pending",  # pending, approved, rejected
 #           "created_at": "2024-01-01T12:00:00",
 #           "screenshot_file_id": "AgAC...",
-#           "admin_note": "test note"
+#           "admin_note": "test note",
+#           "period": 1  # 1, 3 или 6 месяцев
 #       },
 #       ...
 #   }
@@ -115,14 +117,22 @@ async def get_all_users() -> list[dict]:
 
 
 # ── ПЛАТЕЖИ ──────────────────────────────────────────────────────────────
-async def create_payment_request(tg_id: int, screenshot_file_id: str, period: int = 1) -> str:
-    """Создаёт заявку на платёж. Возвращает ID заявки."""
+async def create_payment_request(tg_id: int, screenshot_file_id: str, period: int = 1, request_type: str = "new") -> str:
+    """Создаёт заявку на платёж. Возвращает ID заявки.
+    
+    Args:
+        tg_id: ID пользователя в Telegram
+        screenshot_file_id: file_id скриншота платежа
+        period: количество месяцев (1, 3 или 6)
+        request_type: тип заявки ("new" или "renewal")
+    """
     import uuid as uuid_lib
     payment_id = str(uuid_lib.uuid4())
     data = _load()
     
     data["payments"][payment_id] = {
         "tg_id": tg_id,
+        "type": request_type,
         "status": "pending",
         "created_at": datetime.now().isoformat(),
         "screenshot_file_id": screenshot_file_id,
@@ -130,7 +140,9 @@ async def create_payment_request(tg_id: int, screenshot_file_id: str, period: in
         "period": period,
     }
     _save(data)
-    logger.info("Заявка на платёж %s создана для пользователя %s", payment_id, tg_id)
+    logger.info("Заявка на %s (%s месяцев) %s создана для пользователя %s", 
+                "новую подписку" if request_type == "new" else "продление", 
+                period, payment_id, tg_id)
     return payment_id
 
 

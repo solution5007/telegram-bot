@@ -17,6 +17,7 @@ def profile_menu() -> InlineKeyboardMarkup:
     """Меню личного кабинета."""
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="Обновить", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text="Продлить подписку", callback_data="renew_vpn"))
     builder.row(InlineKeyboardButton(text="Инструкция", callback_data="show_instructions"))
     builder.row(InlineKeyboardButton(text="Главное меню", callback_data="main_menu"))
     return builder.as_markup()

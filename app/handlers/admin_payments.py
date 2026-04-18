@@ -162,49 +162,104 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 await callback.message.answer(text, parse_mode="HTML")
 
     try:
-        await safe_edit("⏳ Создаю VPN-клиента в панели...")
+        request_type = payment.get("type", "new")
+        
+        if request_type == "renewal":
+            await safe_edit("⏳ Обрабатываю продление подписки...")
+        else:
+            await safe_edit("⏳ Создаю VPN-клиента в панели...")
 
         user = await db.get_user(payment["tg_id"])
         username = user.get("username", f"user_{payment['tg_id']}") if user else f"user_{payment['tg_id']}"
         
-        # Рассчитываем expiry_time перед созданием клиента
         period = payment.get("period", 1)
-        if period == 0:
-            expiry_ms = 0
-            expiry_iso = 0
-        else:
-            days = period * 30
-            expiry_datetime = datetime.now() + timedelta(days=days)
-            expiry_ms = int(expiry_datetime.timestamp() * 1000)
-            expiry_iso = expiry_datetime.isoformat()
-
-        # Создаем клиента в панели сразу с нужным expiry_time
-        uuid_str, email = await panel.add_client(payment["tg_id"], username, expiry_time=expiry_ms)
         
-        if not uuid_str:
-            if user and user.get("uuid"):
-                uuid_str = user["uuid"]
-                email = user["email"]
-            else:
-                await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
+        if request_type == "renewal":
+            # ── ПРОДЛЕНИЕ ПОДПИСКИ ──
+            if not user:
+                await safe_edit(f"❌ <b>Ошибка:</b> Пользователь не найден.\nID: <code>{payment_id}</code>")
                 return
+            
+            uuid_str = user.get("uuid")
+            email = user.get("email")
+            
+            if not uuid_str or not email:
+                await safe_edit(f"❌ <b>Ошибка:</b> Не удалось найти данные клиента.\nID: <code>{payment_id}</code>")
+                return
+            
+            # Рассчитываем новый expiry_time (продление текущего или с сегодня)
+            if period == 0:
+                new_expiry_ms = 0
+                new_expiry_iso = 0
+            else:
+                days = period * 30
+                expiry_datetime = datetime.now() + timedelta(days=days)
+                new_expiry_ms = int(expiry_datetime.timestamp() * 1000)
+                new_expiry_iso = expiry_datetime.isoformat()
+            
+            # Обновляем expiry time в панели
+            if not await panel.update_client_expiry(email, new_expiry_ms):
+                logger.warning(f"Не удалось обновить expiry time для {email}")
+            
+            # Сохраняем новый expiry_date в БД
+            await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=new_expiry_iso)
+            await db.approve_payment(payment_id, "Одобрено администратором")
+            
+            # Уведомляем пользователя о продлении
+            try:
+                if period == 0:
+                    message_text = "✅ <b>Подписка продлена!</b>\n\nТеперь у вас безлимитный доступ ♾️"
+                else:
+                    message_text = f"✅ <b>Подписка продлена!</b>\n\nНовый срок: {period} месяц{'а' if period == 1 else 'ев'}\nДо: {new_expiry_iso.split('T')[0]}"
+                
+                await callback.bot.send_message(
+                    payment["tg_id"],
+                    message_text,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Ошибка отправки уведомления о продлении: {e}")
+            
+            await safe_edit(f"✅ Заявка на продление <code>{payment_id}</code> одобрена!")
+            
+        else:
+            # ── НОВАЯ ПОДПИСКА ──
+            if period == 0:
+                expiry_ms = 0
+                expiry_iso = 0
+            else:
+                days = period * 30
+                expiry_datetime = datetime.now() + timedelta(days=days)
+                expiry_ms = int(expiry_datetime.timestamp() * 1000)
+                expiry_iso = expiry_datetime.isoformat()
 
-        # Если клиент создан, сохраняем expiry_date в БД
-        await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)
-        await db.approve_payment(payment_id, "Одобрено администратором")
-        
-        # Отправляем VPN ссылку пользователю
-        try:
-            link = generate_vless_link(uuid_str, email)
-            await callback.bot.send_message(
-                payment["tg_id"], 
-                f"✅ <b>Ваш платеж одобрен!</b>\n\nVPN готов!\n\n<code>{link}</code>", 
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(f"Ошибка отправки VPN ссылки пользователю: {e}")
-        
-        await safe_edit(f"✅ Заявка <code>{payment_id}</code> одобрена и активирована!")
+            # Создаем клиента в панели сразу с нужным expiry_time
+            uuid_str, email = await panel.add_client(payment["tg_id"], username, expiry_time=expiry_ms)
+            
+            if not uuid_str:
+                if user and user.get("uuid"):
+                    uuid_str = user["uuid"]
+                    email = user["email"]
+                else:
+                    await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
+                    return
+
+            # Если клиент создан, сохраняем expiry_date в БД
+            await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)
+            await db.approve_payment(payment_id, "Одобрено администратором")
+            
+            # Отправляем VPN ссылку пользователю
+            try:
+                link = generate_vless_link(uuid_str, email)
+                await callback.bot.send_message(
+                    payment["tg_id"], 
+                    f"✅ <b>Ваш платеж одобрен!</b>\n\nVPN готов!\n\n<code>{link}</code>", 
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Ошибка отправки VPN ссылки пользователю: {e}")
+            
+            await safe_edit(f"✅ Заявка <code>{payment_id}</code> одобрена и активирована!")
         
     except Exception as e:
         logger.error(f"Ошибка при одобрении платежа: {e}", exc_info=True)

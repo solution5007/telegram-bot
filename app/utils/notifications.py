@@ -16,22 +16,29 @@ async def notify_admin_about_payment(bot: Bot, payment_id: str, tg_id: int, user
             return
         
         username = username or "unknown"
-        
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            types.InlineKeyboardButton(text="Одобрить", callback_data=f"approve_payment_{payment_id}"),
-            types.InlineKeyboardButton(text="Отклонить", callback_data=f"reject_payment_{payment_id}")
-        )
-        
         period = payment.get("period", 1)
+        request_type = payment.get("type", "new")
+        
+        # Определяем заголовок в зависимости от типа
+        if request_type == "renewal":
+            header = "🔄 <b>Новая заявка на продление подписки</b>"
+        else:
+            header = "🟢 <b>Новая заявка на оплату</b>"
+        
         period_text = f"{period} месяц" + ("ов" if period != 1 else "")
         text = (
-            f"🟢 <b>Новая заявка на оплату</b>\n\n"
+            f"{header}\n\n"
             f"Пользователь: @{username}\n"
             f"ID: <code>{tg_id}</code>\n"
             f"Заявка: <code>{payment_id}</code>\n"
             f"Период: {period_text}\n"
             f"Дата: {payment['created_at'][:19]}\n"
+        )
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            types.InlineKeyboardButton(text="Одобрить", callback_data=f"approve_payment_{payment_id}"),
+            types.InlineKeyboardButton(text="Отклонить", callback_data=f"reject_payment_{payment_id}")
         )
         
         await bot.send_photo(
