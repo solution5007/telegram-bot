@@ -17,9 +17,16 @@ router = Router(name="user")
 async def cmd_start(message: types.Message, panel: PanelAPI) -> None:
     user = await db.get_user(message.from_user.id)
 
-    # Проверяем статус (для совместимости со старыми записями в БД)
-    user_status = user.get("status", "active") if user else None
-    has_active_vpn = user and user_status == "active"
+    # Проверяем статус: пользователь считается активным только если:
+    # 1. Существует в БД
+    # 2. status == "active"
+    # 3. Имеет uuid и email
+    has_active_vpn = (
+        user
+        and user.get("status") == "active"
+        and user.get("uuid")
+        and user.get("email")
+    )
 
     if has_active_vpn:
         text = "С возвращением! Управление твоим VPN ниже"
@@ -33,8 +40,12 @@ async def cmd_start(message: types.Message, panel: PanelAPI) -> None:
 async def on_main_menu(callback: types.CallbackQuery) -> None:
     """Главное меню."""
     user = await db.get_user(callback.from_user.id)
-    user_status = user.get("status", "active") if user else None
-    has_active_vpn = user and user_status == "active"
+    has_active_vpn = (
+        user
+        and user.get("status") == "active"
+        and user.get("uuid")
+        and user.get("email")
+    )
     
     if has_active_vpn:
         text = "Главное меню\n\nВыберите действие:"
@@ -52,12 +63,15 @@ async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
     await callback.message.edit_text("Загружаю статистику...")
 
     user = await db.get_user(callback.from_user.id)
-    if not user:
-        await callback.message.edit_text("Пользователь не найден в базе.")
+    
+    # Проверяем, что пользователь существует и имеет все необходимые данные
+    if not user or not user.get("uuid") or not user.get("email"):
+        await callback.message.edit_text("❌ Данные профиля не найдены в базе.")
         return
 
-    uuid_str, email = user["uuid"], user["email"]
-    user_status = user.get("status", "active")
+    uuid_str = user["uuid"]
+    email = user["email"]
+    user_status = user.get("status", "inactive")  # Безопасный дефолт
 
     up, down = await panel.get_client_traffic(email)
     total_gb = round((up + down) / (1024**3), 2)
