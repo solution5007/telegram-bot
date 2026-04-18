@@ -3,6 +3,7 @@
 
 from aiogram import Router, types, F
 from aiogram.filters import CommandStart
+from datetime import datetime
 
 from app import database as db
 from app.keyboards import main_menu, profile_menu, to_profile_menu
@@ -65,12 +66,21 @@ async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
     
     status_text = "Активен" if user_status == "active" else "Ожидание подтверждения платежа"
     
+    expiry_info = ""
+    if user.get("expiry_time"):
+        try:
+            expiry_dt = datetime.fromisoformat(user["expiry_time"])
+            expiry_info = f"Дата окончания: {expiry_dt.strftime('%d.%m.%Y')}\n"
+        except:
+            pass
+    
     message_text = (
         f"Личный кабинет\n\n"
         f"Пользователь: {email}\n"
         f"Статус: {status_text}\n"
+        f"{expiry_info}"
         f"Потрачено трафика: {total_gb} GB\n"
-        f"План: Стандартный (1 месяц)\n\n"
+        f"План: Стандартный\n\n"
         f"Твой ключ подключения:\n\n"
         f"<code>{link}</code>\n\n"
         f"Используйте её в любом клиенте для создания подключения."

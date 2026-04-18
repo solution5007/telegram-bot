@@ -18,15 +18,38 @@ CARD_NUMBER = getattr(settings, 'card_number', '5500 0000 0000 0000')
 PAYMENT_AMOUNT = getattr(settings, 'payment_amount', '150')
 
 class PaymentStates(StatesGroup):
+    choosing_period = State()
     waiting_for_screenshot = State()
     waiting_for_payment_confirmation = State()
 
 @router.callback_query(F.data == "buy_vpn")
 async def on_buy_vpn(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(PaymentStates.choosing_period)
+    await callback.message.edit_text(
+        "<b>VPN Подписка</b>\n\n"
+        "Выберите срок подписки:",
+        parse_mode="HTML",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="1 месяц - 150 руб", callback_data="period_1")],
+            [types.InlineKeyboardButton(text="3 месяца - 400 руб", callback_data="period_3")],
+            [types.InlineKeyboardButton(text="6 месяцев - 700 руб", callback_data="period_6")],
+            [types.InlineKeyboardButton(text="Отмена", callback_data="main_menu")]
+        ])
+    )
+
+@router.callback_query(F.data.startswith("period_"), PaymentStates.choosing_period)
+async def on_period_selected(callback: types.CallbackQuery, state: FSMContext):
+    period = int(callback.data.replace("period_", ""))
+    prices = {1: 150, 3: 400, 6: 700}
+    price = prices.get(period, 150)
+    
+    await state.update_data(period=period, price=price)
+    await state.set_state(PaymentStates.waiting_for_screenshot)
+    
     await callback.message.edit_text(
         f"<b>VPN Подписка</b>\n\n"
-        f"Стоимость: {PAYMENT_AMOUNT} руб\n"
-        f"Срок: 1 месяц\n\n"
+        f"Стоимость: {price} руб\n"
+        f"Срок: {period} месяц{'а' if period == 1 else ('а' if period < 5 else 'ев')}\n\n"
         f"Реквизиты платежа:\n"
         f"<code>{CARD_NUMBER}</code>\n\n"
         f"1. Оплатите по карте выше\n"
@@ -61,6 +84,7 @@ async def on_screenshot_received(message: types.Message, state: FSMContext):
 async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     screenshot_file_id = data.get("screenshot_file_id")
+    period = data.get("period", 1)
     
     await callback.message.edit_text("Отправляю заявку на проверку...")
     
@@ -74,7 +98,7 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -
     )
     
     # Создаем заявку в БД (ВЫЗЫВАЕМ ОДИН РАЗ)
-    payment_id = await db.create_payment_request(callback.from_user.id, screenshot_file_id)
+    payment_id = await db.create_payment_request(callback.from_user.id, screenshot_file_id, period)
     
     # Уведомляем админа (ВЫЗЫВАЕМ ОДИН РАЗ)
     await notify_admin_about_payment(callback.bot, payment_id, callback.from_user.id, callback.from_user.username)

@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 #           "uuid": "550e8400-...",
 #           "email": "john_123456789",
 #           "status": "active",  # active, pending_payment
-#           "plan": "standard"  # стандартный план
+#           "plan": "standard",  # стандартный план
+#           "expiry_time": "2024-01-01T12:00:00"  # дата окончания подписки
 #       },
 #       ...
 #   },
@@ -89,10 +90,10 @@ async def get_user(tg_id: int) -> Optional[dict]:
     return data["users"].get(str(tg_id))
 
 
-async def upsert_user(tg_id: int, username: str | None, uuid: str, email: str, status: str = "pending_payment") -> None:
+async def upsert_user(tg_id: int, username: str | None, uuid: str, email: str, status: str = "pending_payment", expiry_time: str | None = None) -> None:
     """Создаёт или обновляет запись о пользователе."""
     data = _load()
-    data["users"][str(tg_id)] = {
+    user_data = {
         "tg_id": tg_id,
         "username": username,
         "uuid": uuid,
@@ -100,6 +101,9 @@ async def upsert_user(tg_id: int, username: str | None, uuid: str, email: str, s
         "status": status,
         "plan": "standard",
     }
+    if expiry_time:
+        user_data["expiry_time"] = expiry_time
+    data["users"][str(tg_id)] = user_data
     _save(data)
     logger.info("Пользователь %s сохранён.", tg_id)
 
@@ -111,7 +115,7 @@ async def get_all_users() -> list[dict]:
 
 
 # ── ПЛАТЕЖИ ──────────────────────────────────────────────────────────────
-async def create_payment_request(tg_id: int, screenshot_file_id: str) -> str:
+async def create_payment_request(tg_id: int, screenshot_file_id: str, period: int = 1) -> str:
     """Создаёт заявку на платёж. Возвращает ID заявки."""
     import uuid as uuid_lib
     payment_id = str(uuid_lib.uuid4())
@@ -123,6 +127,7 @@ async def create_payment_request(tg_id: int, screenshot_file_id: str) -> str:
         "created_at": datetime.now().isoformat(),
         "screenshot_file_id": screenshot_file_id,
         "admin_note": "",
+        "period": period,
     }
     _save(data)
     logger.info("Заявка на платёж %s создана для пользователя %s", payment_id, tg_id)

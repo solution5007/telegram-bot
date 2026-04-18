@@ -4,7 +4,7 @@ from aiogram import Router, F, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.exceptions import TelegramBadRequest
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app import database as db
 from app.panel import PanelAPI
@@ -178,8 +178,19 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
                 return
             
-        # Записываем пользователя в БД как активного
-        await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active")
+        # Рассчитываем expiry_time
+        period = payment.get("period", 1)
+        days = period * 30
+        expiry_datetime = datetime.now() + timedelta(days=days)
+        expiry_ms = int(expiry_datetime.timestamp() * 1000)
+        expiry_iso = expiry_datetime.isoformat()
+        
+        # Обновляем expiry time в панели
+        if not await panel.update_client_expiry(email, expiry_ms):
+            logger.warning(f"Не удалось обновить expiry time для {email}")
+        
+        # Записываем пользователя в БД как активного с expiry_time
+        await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)
         await db.approve_payment(payment_id, "Одобрено администратором")
         
         # Отправляем VPN ссылку пользователю

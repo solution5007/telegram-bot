@@ -185,6 +185,43 @@ class PanelAPI:
 
         return None, None
 
+    async def update_client_expiry(self, email: str, expiry_time: int) -> bool:
+        """Обновляет expiryTime для клиента. expiry_time в миллисекундах."""
+        inbound_id = 1  # предполагаем, что inbound_id = 1
+
+        session = await self._ensure_session()
+        if not session:
+            return False
+
+        payload = {
+            "id": inbound_id,
+            "settings": json.dumps(
+                {
+                    "clients": [
+                        {
+                            "email": email,
+                            "expiryTime": expiry_time,
+                        }
+                    ]
+                }
+            ),
+        }
+
+        url = self._url("panel/api/inbounds/updateClient")
+        logger.info("Обновляю expiry time для %s на %s...", email, expiry_time)
+
+        try:
+            async with session.post(url, json=payload) as resp:
+                data = await resp.json()
+                if data.get("success"):
+                    logger.info("Expiry time для %s обновлен!", email)
+                    return True
+                logger.error("Ошибка updateClient: %s", data.get("msg"))
+        except Exception as exc:
+            logger.error("Ошибка API updateClient: %s", exc)
+
+        return False
+
     async def get_client_traffic(self, email: str) -> tuple[int, int]:
         """Возвращает ``(upload, download)`` в байтах."""
         session = await self._ensure_session()
@@ -204,6 +241,25 @@ class PanelAPI:
             logger.error("Ошибка получения трафика: %s", exc)
 
         return 0, 0
+
+    async def get_client_expiry(self, email: str) -> Optional[int]:
+        """Возвращает expiryTime в миллисекундах или None."""
+        session = await self._ensure_session()
+        if not session:
+            return None
+
+        url = self._url(f"panel/api/inbounds/getClientTraffics/{email}")
+        logger.info("Запрос expiry time для %s…", email)
+
+        try:
+            async with session.get(url) as resp:
+                data = await resp.json()
+                if data.get("success") and data.get("obj"):
+                    return data["obj"].get("expiryTime", 0)
+        except Exception as exc:
+            logger.error("Ошибка получения expiry time: %s", exc)
+
+        return None
 
     async def get_inbounds(self) -> dict:
         """Возвращает список всех инбаундов."""
