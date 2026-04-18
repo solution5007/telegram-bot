@@ -258,23 +258,31 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             uuid_str, email = await panel.add_client(payment["tg_id"], username, expiry_time=expiry_ms)
             
             if not uuid_str:
-                if user and user.get("uuid"):
-                    # Может быть, это старый клиент что мы не смогли обновить
+                # Ошибка создания клиента
+                if user and user.get("uuid") and user.get("email"):
+                    # Fallback: используем существующего клиента и пытаемся обновить его expiry_time
+                    logger.warning(f"Не удалось создать/обновить клиента, пытаюсь использовать существующего")
                     uuid_str = user["uuid"]
                     email = user["email"]
+                    
+                    # Делаем еще одну попытку обновить expiry_time
+                    if expiry_ms != 0:  # Не трогаем безлимит клиентов
+                        success = await panel.update_client_expiry(email, expiry_ms)
+                        if not success:
+                            logger.error(f"Даже при использовании fallback не удалось обновить expiry_time для {email}")
                 else:
                     await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
+                    logger.error(f"Критическая ошибка: uuid_str=None и нет fallback пользователя для {payment['tg_id']}")
                     return
             elif uuid_str == "existing":
-                # Клиент уже существовал и мы просто обновили его expiry_time
-                # Берем данные из результата, email уже известен
+                # Клиент уже существовал и мы успешно обновили его expiry_time
                 logger.info(f"Клиент {email} существовал, expiry_time обновлен")
-                # Для существующего клиента используем тот же UUID что уже был
-                if not user or not user.get("uuid"):
-                    # Странная ситуация, но пытаемся сохранить что-то
-                    uuid_str = "unknown"
-                else:
+                # Для существующего клиента используем UUID из БД
+                if user and user.get("uuid"):
                     uuid_str = user["uuid"]
+                else:
+                    logger.error(f"Странная ситуация: 'existing' но нет uuid в БД для {payment['tg_id']}")
+                    uuid_str = "unknown"
 
             # Если клиент создан (новый или обновлен существующий), сохраняем в БД
             await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)

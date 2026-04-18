@@ -200,17 +200,21 @@ class PanelAPI:
         return None, None
 
     async def update_client_expiry(self, email: str, expiry_time: int) -> bool:
-        """Обновляет expiryTime для клиента через updateInbound. expiry_time в миллисекундах."""
+        """
+        Обновляет expiryTime для клиента. expiry_time в миллисекундах.
+        Отправляет полный объект inbound чтобы избежать validation errors.
+        """
         inbound_id = 1  # предполагаем, что inbound_id = 1
 
         session = await self._ensure_session()
         if not session:
+            logger.error("Не удалось создать сессию")
             return False
 
         # Получаем весь inbound
         get_url = self._url(f"panel/api/inbounds/get/{inbound_id}")
         try:
-            async with session.get(get_url) as resp:
+            async with session.get(get_url, timeout=5) as resp:
                 data = await resp.json()
                 if not data.get("success"):
                     logger.error("Ошибка получения inbound: %s", data.get("msg"))
@@ -224,7 +228,11 @@ class PanelAPI:
                 # Находим клиента по email и обновляем его expiryTime
                 settings_str = inbound.get("settings", "{}")
                 if isinstance(settings_str, str):
-                    settings = json.loads(settings_str)
+                    try:
+                        settings = json.loads(settings_str)
+                    except json.JSONDecodeError as e:
+                        logger.error("Ошибка парсинга settings: %s", e)
+                        return False
                 else:
                     settings = settings_str
                 
@@ -233,31 +241,65 @@ class PanelAPI:
                 
                 for client in clients:
                     if client.get("email") == email:
+                        old_expiry = client.get("expiryTime")
                         client["expiryTime"] = expiry_time
                         client_found = True
-                        logger.info("Найден клиент %s, обновляю expiry на %s", email, expiry_time)
+                        logger.info(
+                            "Найден клиент %s: старый expiry=%s, новый expiry=%s",
+                            email, old_expiry, expiry_time
+                        )
                         break
                 
                 if not client_found:
                     logger.warning("Клиент %s не найден в inbound %s", email, inbound_id)
                     return False
                 
-                # Отправляем обновленный inbound
+                # ⚠️ ВАЖНО: Отправляем полный inbound объект, не только settings
+                # API требует все поля для валидации
                 update_url = self._url(f"panel/api/inbounds/update/{inbound_id}")
+                
+                # Собираем обновленный payload с проверкой всех полей
+                port = inbound.get("port")
+                if port is None or port == 0:
+                    logger.error("⚠️ Критическое: port inbound = %s, это может привести к ошибке", port)
+                
                 update_payload = {
-                    "settings": json.dumps(settings)
+                    "id": inbound.get("id"),
+                    "enable": inbound.get("enable", True),
+                    "port": port,
+                    "protocol": inbound.get("protocol"),
+                    "remark": inbound.get("remark", ""),
+                    "settings": json.dumps(settings),
+                    "streamSettings": inbound.get("streamSettings", "{}"),
+                    "sniffing": inbound.get("sniffing", "{}"),
+                    "allocate": inbound.get("allocate", "{}"),
                 }
                 
-                async with session.post(update_url, json=update_payload) as resp:
+                logger.debug(
+                    "Update payload для inbound %s: id=%s port=%s protocol=%s enable=%s",
+                    inbound_id, update_payload.get("id"), port, 
+                    update_payload.get("protocol"), update_payload.get("enable")
+                )
+                
+                # Убираем None значения чтобы не сломать API, но НЕ убираем port
+                update_payload = {k: v for k, v in update_payload.items() if v is not None}
+                
+                logger.debug("Отправляю update для inbound %s: %s", inbound_id, update_payload.keys())
+                
+                async with session.post(update_url, json=update_payload, timeout=5) as resp:
                     result = await resp.json()
                     if result.get("success"):
-                        logger.info("Expiry time для %s обновлен!", email)
+                        logger.info("✅ Expiry time для %s успешно обновлен на %s!", email, expiry_time)
                         return True
-                    logger.error("Ошибка updateInbound: %s", result.get("msg"))
+                    
+                    logger.error("❌ Ошибка updateInbound: %s", result.get("msg"))
                     return False
         
+        except asyncio.TimeoutError:
+            logger.error("Timeout при обновлении expiry для %s", email)
+            return False
         except Exception as exc:
-            logger.error("Ошибка при обновлении expiry time: %s", exc)
+            logger.error("Ошибка при обновлении expiry time для %s: %s", email, exc, exc_info=True)
             return False
 
     async def get_client_traffic(self, email: str) -> tuple[int, int]:
