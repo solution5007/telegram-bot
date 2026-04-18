@@ -133,16 +133,16 @@ class PanelAPI:
 
         return None
 
-    async def add_client(self, tg_id: int, username: str | None, expiry_time: int = 0) -> tuple[Optional[str], Optional[str]]:
-        """Создаёт клиента в VLESS inbound. Возвращает ``(uuid, email)``."""
-#        inbound_id = await self.get_vless_inbound_id()
-#        if inbound_id is None:
-#            return None, None
-        
+    async def add_new_client(self, tg_id: int, username: str | None, expiry_time: int = 0) -> tuple[Optional[str], Optional[str]]:
+        """
+        Создаёт НОВОГО клиента в VLESS inbound.
+        Вызывать только если пользователя точно нет в панели!
+        Возвращает (uuid, email) или (None, None) при ошибке.
+        """
         inbound_id = 1
-
         session = await self._ensure_session()
         if not session:
+            logger.error("Не удалось создать сессию для add_new_client")
             return None, None
 
         client_uuid = str(uuid.uuid4())
@@ -170,34 +170,26 @@ class PanelAPI:
         }
 
         url = self._url("panel/api/inbounds/addClient")
-        logger.info("Создаю клиента %s (uuid=%s)...", email, client_uuid)
+        logger.info("🆕 Создаю НОВОГО клиента %s (uuid=%s, expiry=%s)...", email, client_uuid, expiry_time)
 
         try:
-            async with session.post(url, json=payload) as resp:
+            async with session.post(url, json=payload, timeout=5) as resp:
                 data = await resp.json()
                 if data.get("success"):
-                    logger.info("Клиент %s создан!", email)
-#                    await asyncio.sleep(1)
+                    logger.info("✅ Клиент %s успешно создан!", email)
                     return client_uuid, email
                 
-                # Проверяем ошибку Duplicate email - клиент уже существует
-                error_msg = data.get("msg", "")
-                if "Duplicate email" in error_msg:
-                    logger.warning(f"Клиент с email {email} уже существует в панели, обновляю expiry_time")
-                    # Клиент существует, просто обновляем его expiry time
-                    if await self.update_client_expiry(email, expiry_time):
-                        logger.info(f"Expiry time для существующего клиента {email} обновлен")
-                        # Возвращаем специальный маркер что это существующий клиент
-                        return "existing", email
-                    else:
-                        logger.error(f"Не удалось обновить expiry time для существующего клиента {email}")
-                        return None, None
-                
-                logger.error("Ошибка addClient: %s", error_msg)
+                error_msg = data.get("msg", "Неизвестная ошибка")
+                logger.error("❌ Ошибка при создании клиента %s: %s", email, error_msg)
+                return None, None
+        
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Timeout при создании клиента %s", email)
+            return None, None
         except Exception as exc:
-            logger.error("Ошибка API addClient: %s", exc)
+            logger.error("❌ Критическая ошибка при создании клиента %s: %s", email, exc, exc_info=True)
+            return None, None
 
-        return None, None
 
     async def update_client_expiry(self, email: str, expiry_time: int) -> bool:
         """
