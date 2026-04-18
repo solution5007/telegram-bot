@@ -259,26 +259,52 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             
             if not uuid_str:
                 if user and user.get("uuid"):
+                    # Может быть, это старый клиент что мы не смогли обновить
                     uuid_str = user["uuid"]
                     email = user["email"]
                 else:
                     await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
                     return
+            elif uuid_str == "existing":
+                # Клиент уже существовал и мы просто обновили его expiry_time
+                # Берем данные из результата, email уже известен
+                logger.info(f"Клиент {email} существовал, expiry_time обновлен")
+                # Для существующего клиента используем тот же UUID что уже был
+                if not user or not user.get("uuid"):
+                    # Странная ситуация, но пытаемся сохранить что-то
+                    uuid_str = "unknown"
+                else:
+                    uuid_str = user["uuid"]
 
-            # Если клиент создан, сохраняем expiry_date в БД
+            # Если клиент создан (новый или обновлен существующий), сохраняем в БД
             await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)
             await db.approve_payment(payment_id, "Одобрено администратором")
             
-            # Отправляем VPN ссылку пользователю
-            try:
-                link = generate_vless_link(uuid_str, email)
-                await callback.bot.send_message(
-                    payment["tg_id"], 
-                    f"✅ <b>Ваш платеж одобрен!</b>\n\nVPN готов!\n\n<code>{link}</code>", 
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logger.error(f"Ошибка отправки VPN ссылки пользователю: {e}")
+            # Отправляем VPN ссылку пользователю (если у нас есть валидный UUID)
+            if uuid_str and uuid_str not in ("existing", "unknown"):
+                try:
+                    link = generate_vless_link(uuid_str, email)
+                    await callback.bot.send_message(
+                        payment["tg_id"], 
+                        f"✅ <b>Ваш платеж одобрен!</b>\n\nVPN готов!\n\n<code>{link}</code>", 
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка отправки VPN ссылки пользователю: {e}")
+            elif uuid_str == "existing" and user and user.get("uuid"):
+                # Это существующий клиент, отправляем его старую ссылку
+                try:
+                    link = generate_vless_link(user["uuid"], email)
+                    await callback.bot.send_message(
+                        payment["tg_id"], 
+                        f"✅ <b>Ваш платеж одобрен!</b>\n\nПодписка активирована!\n\n<code>{link}</code>", 
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка отправки VPN ссылки пользователю: {e}")
+            else:
+                # Не можем отправить ссылку
+                logger.warning(f"Не удалось отправить VPN ссылку для пользователя {payment['tg_id']}")
             
             await safe_edit(f"✅ Заявка <code>{payment_id}</code> одобрена и активирована!")
         

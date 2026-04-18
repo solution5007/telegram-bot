@@ -179,7 +179,21 @@ class PanelAPI:
                     logger.info("Клиент %s создан!", email)
 #                    await asyncio.sleep(1)
                     return client_uuid, email
-                logger.error("Ошибка addClient: %s", data.get("msg"))
+                
+                # Проверяем ошибку Duplicate email - клиент уже существует
+                error_msg = data.get("msg", "")
+                if "Duplicate email" in error_msg:
+                    logger.warning(f"Клиент с email {email} уже существует в панели, обновляю expiry_time")
+                    # Клиент существует, просто обновляем его expiry time
+                    if await self.update_client_expiry(email, expiry_time):
+                        logger.info(f"Expiry time для существующего клиента {email} обновлен")
+                        # Возвращаем специальный маркер что это существующий клиент
+                        return "existing", email
+                    else:
+                        logger.error(f"Не удалось обновить expiry time для существующего клиента {email}")
+                        return None, None
+                
+                logger.error("Ошибка addClient: %s", error_msg)
         except Exception as exc:
             logger.error("Ошибка API addClient: %s", exc)
 
