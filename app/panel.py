@@ -186,41 +186,65 @@ class PanelAPI:
         return None, None
 
     async def update_client_expiry(self, email: str, expiry_time: int) -> bool:
-        """Обновляет expiryTime для клиента. expiry_time в миллисекундах."""
+        """Обновляет expiryTime для клиента через updateInbound. expiry_time в миллисекундах."""
         inbound_id = 1  # предполагаем, что inbound_id = 1
 
         session = await self._ensure_session()
         if not session:
             return False
 
-        payload = {
-            "id": inbound_id,
-            "settings": json.dumps(
-                {
-                    "clients": [
-                        {
-                            "email": email,
-                            "expiryTime": expiry_time,
-                        }
-                    ]
-                }
-            ),
-        }
-
-        url = self._url("panel/api/inbounds/updateClient")
-        logger.info("Обновляю expiry time для %s на %s...", email, expiry_time)
-
+        # Получаем весь inbound
+        get_url = self._url(f"panel/api/inbounds/get/{inbound_id}")
         try:
-            async with session.post(url, json=payload) as resp:
+            async with session.get(get_url) as resp:
                 data = await resp.json()
-                if data.get("success"):
-                    logger.info("Expiry time для %s обновлен!", email)
-                    return True
-                logger.error("Ошибка updateClient: %s", data.get("msg"))
+                if not data.get("success"):
+                    logger.error("Ошибка получения inbound: %s", data.get("msg"))
+                    return False
+                
+                inbound = data.get("obj")
+                if not inbound:
+                    logger.error("Inbound не найден")
+                    return False
+                
+                # Находим клиента по email и обновляем его expiryTime
+                settings_str = inbound.get("settings", "{}")
+                if isinstance(settings_str, str):
+                    settings = json.loads(settings_str)
+                else:
+                    settings = settings_str
+                
+                clients = settings.get("clients", [])
+                client_found = False
+                
+                for client in clients:
+                    if client.get("email") == email:
+                        client["expiryTime"] = expiry_time
+                        client_found = True
+                        logger.info("Найден клиент %s, обновляю expiry на %s", email, expiry_time)
+                        break
+                
+                if not client_found:
+                    logger.warning("Клиент %s не найден в inbound %s", email, inbound_id)
+                    return False
+                
+                # Отправляем обновленный inbound
+                update_url = self._url(f"panel/api/inbounds/update/{inbound_id}")
+                update_payload = {
+                    "settings": json.dumps(settings)
+                }
+                
+                async with session.post(update_url, json=update_payload) as resp:
+                    result = await resp.json()
+                    if result.get("success"):
+                        logger.info("Expiry time для %s обновлен!", email)
+                        return True
+                    logger.error("Ошибка updateInbound: %s", result.get("msg"))
+                    return False
+        
         except Exception as exc:
-            logger.error("Ошибка API updateClient: %s", exc)
-
-        return False
+            logger.error("Ошибка при обновлении expiry time: %s", exc)
+            return False
 
     async def get_client_traffic(self, email: str) -> tuple[int, int]:
         """Возвращает ``(upload, download)`` в байтах."""

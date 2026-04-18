@@ -187,19 +187,43 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 await safe_edit(f"❌ <b>Ошибка:</b> Не удалось найти данные клиента.\nID: <code>{payment_id}</code>")
                 return
             
-            # Рассчитываем новый expiry_time (продление текущего или с сегодня)
+            # Рассчитываем новый expiry_time (добавляем дни к существующему expiry_time)
+            current_expiry = user.get("expiry_time")
+            
             if period == 0:
+                # Безлимит
                 new_expiry_ms = 0
                 new_expiry_iso = 0
+                expiry_text = "Безлимит ♾️"
             else:
                 days = period * 30
-                expiry_datetime = datetime.now() + timedelta(days=days)
-                new_expiry_ms = int(expiry_datetime.timestamp() * 1000)
-                new_expiry_iso = expiry_datetime.isoformat()
+                
+                # Определяем базовую дату для расчета
+                if current_expiry == 0:
+                    # Уже безлимит, оставляем безлимит
+                    new_expiry_ms = 0
+                    new_expiry_iso = 0
+                    expiry_text = "Безлимит ♾️"
+                elif isinstance(current_expiry, str) and current_expiry:
+                    # Добавляем дни к существующей дате
+                    try:
+                        current_dt = datetime.fromisoformat(current_expiry)
+                    except:
+                        # Если не удалось распарсить, берем текущую дату
+                        current_dt = datetime.now()
+                else:
+                    # Если нет expiry_time, используем текущую дату
+                    current_dt = datetime.now()
+                
+                new_expiry_dt = current_dt + timedelta(days=days)
+                new_expiry_ms = int(new_expiry_dt.timestamp() * 1000)
+                new_expiry_iso = new_expiry_dt.isoformat()
+                expiry_text = new_expiry_dt.strftime('%d.%m.%Y')
             
             # Обновляем expiry time в панели
-            if not await panel.update_client_expiry(email, new_expiry_ms):
-                logger.warning(f"Не удалось обновить expiry time для {email}")
+            if new_expiry_ms != 0 or new_expiry_ms == 0:  # Обновляем в любом случае
+                if not await panel.update_client_expiry(email, new_expiry_ms):
+                    logger.warning(f"Не удалось обновить expiry time для {email} в панели")
             
             # Сохраняем новый expiry_date в БД
             await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=new_expiry_iso)
@@ -207,10 +231,7 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             
             # Уведомляем пользователя о продлении
             try:
-                if period == 0:
-                    message_text = "✅ <b>Подписка продлена!</b>\n\nТеперь у вас безлимитный доступ ♾️"
-                else:
-                    message_text = f"✅ <b>Подписка продлена!</b>\n\nНовый срок: {period} месяц{'а' if period == 1 else 'ев'}\nДо: {new_expiry_iso.split('T')[0]}"
+                message_text = f"✅ <b>Подписка продлена!</b>\n\nНовый срок: {period} месяц{'а' if period == 1 else 'ев'}\nДо: {expiry_text}"
                 
                 await callback.bot.send_message(
                     payment["tg_id"],
