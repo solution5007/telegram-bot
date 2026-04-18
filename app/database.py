@@ -90,7 +90,7 @@ async def get_user(tg_id: int) -> Optional[dict]:
     return data["users"].get(str(tg_id))
 
 
-async def upsert_user(tg_id: int, username: str | None, uuid: str, email: str, status: str = "pending_payment", expiry_time: str | None = None) -> None:
+async def upsert_user(tg_id: int, username: str | None, uuid: str, email: str, status: str = "pending_payment", expiry_time: str | int | None = None) -> None:
     """Создаёт или обновляет запись о пользователе."""
     data = _load()
     user_data = {
@@ -101,7 +101,7 @@ async def upsert_user(tg_id: int, username: str | None, uuid: str, email: str, s
         "status": status,
         "plan": "standard",
     }
-    if expiry_time:
+    if expiry_time is not None:
         user_data["expiry_time"] = expiry_time
     data["users"][str(tg_id)] = user_data
     _save(data)

@@ -67,12 +67,16 @@ async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
     status_text = "Активен" if user_status == "active" else "Ожидание подтверждения платежа"
     
     expiry_info = ""
-    if user.get("expiry_time"):
-        try:
-            expiry_dt = datetime.fromisoformat(user["expiry_time"])
-            expiry_info = f"Дата окончания: {expiry_dt.strftime('%d.%m.%Y')}\n"
-        except:
-            pass
+    expiry_time = user.get("expiry_time")
+    if expiry_time is not None:
+        if expiry_time == 0:
+            expiry_info = "Дата окончания: Безлимит ♾️\n"
+        elif isinstance(expiry_time, str):
+            try:
+                expiry_dt = datetime.fromisoformat(expiry_time)
+                expiry_info = f"Дата окончания: {expiry_dt.strftime('%d.%m.%Y')}\n"
+            except:
+                pass
     
     message_text = (
         f"Личный кабинет\n\n"

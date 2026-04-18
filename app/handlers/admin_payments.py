@@ -180,10 +180,17 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             
         # Рассчитываем expiry_time
         period = payment.get("period", 1)
-        days = period * 30
-        expiry_datetime = datetime.now() + timedelta(days=days)
-        expiry_ms = int(expiry_datetime.timestamp() * 1000)
-        expiry_iso = expiry_datetime.isoformat()
+        
+        if period == 0:
+            # Безлимитная подписка
+            expiry_ms = 0
+            expiry_iso = 0
+        else:
+            # Ограниченная подписка
+            days = period * 30
+            expiry_datetime = datetime.now() + timedelta(days=days)
+            expiry_ms = int(expiry_datetime.timestamp() * 1000)
+            expiry_iso = expiry_datetime.isoformat()
         
         # Обновляем expiry time в панели
         if not await panel.update_client_expiry(email, expiry_ms):
