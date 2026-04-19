@@ -4,6 +4,7 @@
 from aiogram import Router, types, F
 from aiogram.filters import CommandStart
 from datetime import datetime
+import logging
 
 from app import database as db
 from app.keyboards import main_menu, profile_menu, to_profile_menu
@@ -11,6 +12,7 @@ from app.panel import PanelAPI
 from app.utils.generate_vless import generate_vless_link
 
 router = Router(name="user")
+logger = logging.getLogger(__name__)
 
 
 @router.message(CommandStart())
@@ -80,26 +82,46 @@ async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
     
     status_text = "Активен" if user_status == "active" else "Ожидание подтверждения платежа"
     
+    # Информация об expiry_time с дополнительными деталями
     expiry_info = ""
     expiry_time = user.get("expiry_time")
     if expiry_time is not None:
         if expiry_time == 0:
-            expiry_info = "Дата окончания: Безлимит ♾️\n"
+            expiry_info = "📅 Дата окончания: <b>Безлимит ♾️</b>\n"
         elif isinstance(expiry_time, str):
             try:
                 expiry_dt = datetime.fromisoformat(expiry_time)
-                expiry_info = f"Дата окончания: {expiry_dt.strftime('%d.%m.%Y')}\n"
-            except:
-                pass
+                expiry_date_str = expiry_dt.strftime('%d.%m.%Y')
+                
+                # Вычисляем дни до окончания
+                days_left = (expiry_dt - datetime.now()).days
+                
+                if days_left > 0:
+                    days_text = f"{days_left} дней"
+                    if days_left == 1:
+                        days_text = "1 день"
+                    elif days_left in [2, 3, 4]:
+                        days_text = f"{days_left} дня"
+                    
+                    # Предупреждение если мало дней
+                    if days_left <= 7:
+                        expiry_info = f"📅 Дата окончания: <b>{expiry_date_str}</b> (⚠️ осталось {days_text})\n"
+                    else:
+                        expiry_info = f"📅 Дата окончания: <b>{expiry_date_str}</b> (осталось {days_text})\n"
+                else:
+                    expiry_info = f"📅 Дата окончания: <b>{expiry_date_str}</b> (❌ истекла)\n"
+            except Exception as e:
+                logger.error(f"Ошибка парсинга expiry_time: {e}")
+                expiry_info = f"📅 Дата окончания: <i>ошибка</i>\n"
     
     message_text = (
-        f"Личный кабинет\n\n"
-        f"Пользователь: {email}\n"
-        f"Статус: {status_text}\n"
+        f"<b>Личный кабинет</b>\n\n"
+        f"👤 Пользователь: <code>{email}</code>\n"
+        f"🔹 Статус: {status_text}\n"
         f"{expiry_info}"
-        f"Потрачено трафика: {total_gb} GB\n"
-        f"План: Стандартный\n\n"
-        f"Твой ключ подключения:\n\n"
+        f"📊 Потрачено трафика: <b>{total_gb}</b> GB\n"
+        f"📌 План: Стандартный\n\n"
+        f"<b>Твой ключ подключения:</b>\n\n"
         f"<code>{link}</code>\n\n"
         f"Используйте её в любом клиенте для создания подключения."
     )

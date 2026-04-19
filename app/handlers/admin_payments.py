@@ -189,6 +189,7 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             
             # Рассчитываем новый expiry_time (добавляем дни к существующему expiry_time)
             current_expiry = user.get("expiry_time")
+            old_expiry_text = "Неизвестно"
             
             if period == 0:
                 # Безлимит
@@ -204,34 +205,49 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                     new_expiry_ms = 0
                     new_expiry_iso = 0
                     expiry_text = "Безлимит ♾️"
+                    old_expiry_text = "Безлимит ♾️"
                 elif isinstance(current_expiry, str) and current_expiry:
                     # Добавляем дни к существующей дате
                     try:
                         current_dt = datetime.fromisoformat(current_expiry)
-                    except:
-                        # Если не удалось распарсить, берем текущую дату
+                        old_expiry_text = current_dt.strftime('%d.%m.%Y')
+                    except Exception as e:
+                        logger.error(f"Ошибка парсинга текущего expiry_time '{current_expiry}': {e}")
                         current_dt = datetime.now()
+                        old_expiry_text = "Неверный формат"
                 else:
                     # Если нет expiry_time, используем текущую дату
                     current_dt = datetime.now()
+                    old_expiry_text = "Не установлена"
                 
                 new_expiry_dt = current_dt + timedelta(days=days)
                 new_expiry_ms = int(new_expiry_dt.timestamp() * 1000)
                 new_expiry_iso = new_expiry_dt.isoformat()
                 expiry_text = new_expiry_dt.strftime('%d.%m.%Y')
+                
+                logger.info(f"🔄 ПРОДЛЕНИЕ: {email} | было: {old_expiry_text} | добавляю: {days} дней ({period} месяцев) | новое: {expiry_text}")
             
             # Обновляем expiry time в панели
-            if new_expiry_ms != 0 or new_expiry_ms == 0:  # Обновляем в любом случае
-                if not await panel.update_client_expiry(email, new_expiry_ms):
-                    logger.warning(f"Не удалось обновить expiry time для {email} в панели")
+            if not await panel.update_client_expiry(email, new_expiry_ms):
+                logger.error(f"❌ Не удалось обновить expiry_time в панели для {email}")
+                await safe_edit(f"❌ <b>Ошибка:</b> Не удалось обновить клиента в панели.\nID: <code>{payment_id}</code>")
+                return
+            
+            logger.info(f"✅ Expiry time обновлен в панели: {email} → {expiry_text}")
             
             # Сохраняем новый expiry_date в БД
             await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=new_expiry_iso)
             await db.approve_payment(payment_id, "Одобрено администратором")
             
-            # Уведомляем пользователя о продлении
+            # Уведомляем пользователя о продлении с подробной информацией
             try:
-                message_text = f"✅ <b>Подписка продлена!</b>\n\nНовый срок: {period} месяц{'а' if period == 1 else 'ев'}\nДо: {expiry_text}"
+                period_text = "1 месяц" if period == 1 else (f"{period} месяца" if period in [2, 3, 4] else f"{period} месяцев")
+                message_text = (
+                    f"✅ <b>Подписка продлена!</b>\n\n"
+                    f"Добавлено: {period_text}\n"
+                    f"Было до: {old_expiry_text}\n"
+                    f"Новый срок: <b>{expiry_text}</b>"
+                )
                 
                 await callback.bot.send_message(
                     payment["tg_id"],
@@ -241,7 +257,7 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления о продлении: {e}")
             
-            await safe_edit(f"✅ Заявка на продление <code>{payment_id}</code> одобрена!")
+            await safe_edit(f"✅ Заявка на продление <code>{payment_id}</code> одобрена!\nНовый срок: {expiry_text}")
             
         else:
             # ── НОВАЯ ПОДПИСКА (request_type = "new") ──
