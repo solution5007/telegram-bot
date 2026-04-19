@@ -104,8 +104,7 @@ async def on_invalid_screenshot(message: types.Message):
 
 @router.callback_query(F.data == "confirm_payment_new")
 async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
-    """Подтверждение платежа для НОВОЙ подписки."""
-    logger.info("🆕 on_confirm_payment вызван для НОВОЙ подписки")
+    """Подтверждение платежа для НОВОЙ подписки или повторной покупки."""
     data = await state.get_data()
     screenshot_file_id = data.get("screenshot_file_id")
     period = data.get("period", 1)
@@ -117,9 +116,15 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -
     
     await callback.message.edit_text("⏳ Отправляю заявку на проверку...")
     
-    # ⚠️ ВАЖНО: Не перезаписываем uuid и email, только меняем статус на pending_payment
-    # Если пользователь уже существует, его старые данные должны сохраниться
+    # ⚠️ ВАЖНО: Определяем тип заявки в зависимости от того, существует ли пользователь
     user = await db.get_user(callback.from_user.id)
+    
+    # Проверяем есть ли уже активный VPN у пользователя
+    has_active_vpn = user and user.get("uuid") and user.get("email")
+    
+    # Если пользователь уже существует с активным VPN, то это фактически продление
+    # (он платит еще раз, не используя кнопку "Продлить подписку")
+    request_type = "renewal" if has_active_vpn else "new"
     
     if user:
         # Пользователь уже существует - просто обновляем статус
@@ -140,13 +145,19 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -
             status="pending_payment"
         )
     
-    # Создаем заявку для НОВОЙ подписки (request_type="new")
-    logger.info(f"📝 Создаю платеж для НОВОЙ подписки: period={period}, request_type='new'")
+    # Логируем что мы определили
+    if request_type == "renewal":
+        logger.info(f"🔄 on_confirm_payment вызван: пользователь {callback.from_user.id} уже существует с активным VPN → request_type='renewal'")
+    else:
+        logger.info(f"🆕 on_confirm_payment вызван: НОВЫЙ пользователь {callback.from_user.id} → request_type='new'")
+    
+    # Создаем заявку с правильным типом
+    logger.info(f"📝 Создаю платеж: period={period}, request_type='{request_type}'")
     payment_id = await db.create_payment_request(
         callback.from_user.id, 
         screenshot_file_id, 
         period=period,
-        request_type="new"  # ← явно указываем что это новая подписка
+        request_type=request_type  # ← правильно определяем тип в зависимости от статуса пользователя
     )
     
     # Уведомляем админа о заявке
@@ -159,8 +170,9 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -
     
     # Выводим подтверждение пользователю
     period_text = "1 месяц" if period == 1 else (f"{period} месяца" if period in [2, 3, 4] else f"{period} месяцев")
+    action_text = "продления" if request_type == "renewal" else "оплаты"
     await callback.message.edit_text(
-        f"✅ <b>Заявка на оплату создана!</b>\n\n"
+        f"✅ <b>Заявка на {action_text} создана!</b>\n\n"
         f"ID: <code>{payment_id}</code>\n"
         f"Период: {period_text}\n\n"
         f"Ожидайте проверки администратора.",

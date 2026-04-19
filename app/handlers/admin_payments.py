@@ -260,8 +260,9 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             await safe_edit(f"✅ Заявка на продление <code>{payment_id}</code> одобрена!\nНовый срок: {expiry_text}")
             
         else:
-            # ── НОВАЯ ПОДПИСКА (request_type = "new") ──
-            # Это может быть либо первый раз покупка, либо повторная покупка от существующего пользователя
+            # ── НОВАЯ ПОДПИСКА (только для абсолютно новых пользователей) ──
+            # request_type="new" теперь означает что это ПЕРВАЯ покупка пользователя
+            # (если пользователь существует и платит повторно, то на_confirm_payment уже установит request_type="renewal")
             
             if period == 0:
                 expiry_ms = 0
@@ -272,33 +273,30 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 expiry_ms = int(expiry_datetime.timestamp() * 1000)
                 expiry_iso = expiry_datetime.isoformat()
 
-            # Проверяем есть ли юзер в БД
+            # Проверяем, есть ли уже пользователь в БД
             existing_user = await db.get_user(payment["tg_id"])
-            has_existing_client = existing_user and existing_user.get("uuid") and existing_user.get("email")
             
-            if has_existing_client:
-                # ── Вариант 1: Существующий клиент, пользователь платит еще раз ──
-                logger.info(f"Заявка type=new но пользователь {payment['tg_id']} уже существует в БД, просто обновляю expiry_time")
+            if existing_user and existing_user.get("uuid") and existing_user.get("email"):
+                # ⚠️ Это не должно происходить если on_confirm_payment работает правильно
+                # (он должен был установить request_type="renewal" для существующих пользователей)
+                logger.warning(f"⚠️ АНОМАЛИЯ: Получена заявка type='new' для существующего пользователя {payment['tg_id']}. Обрабатываю как update.")
                 uuid_str = existing_user["uuid"]
                 email = existing_user["email"]
                 
-                # Обновляем в панели (заменяем expiry_time полностью, не добавляем дни)
                 update_success = await panel.update_client_expiry(email, expiry_ms)
                 if not update_success:
                     logger.error(f"Не удалось обновить expiry_time для {email}")
                     await safe_edit(f"❌ <b>Ошибка:</b> Не удалось обновить клиента в панели.\nID: <code>{payment_id}</code>")
                     return
                 
-                # Сохраняем обновленный expiry_time в БД
                 await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)
                 await db.approve_payment(payment_id, "Одобрено администратором")
                 
-                # Отправляем VPN ссылку пользователю
                 try:
                     link = generate_vless_link(uuid_str, email)
                     await callback.bot.send_message(
                         payment["tg_id"], 
-                        f"✅ <b>Ваш платеж одобрен!</b>\n\nПодписка продлена!\n\n<code>{link}</code>", 
+                        f"✅ <b>Ваш платеж одобрен!</b>\n\nПодписка обновлена!\n\n<code>{link}</code>", 
                         parse_mode="HTML"
                     )
                 except Exception as e:
@@ -307,27 +305,24 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 await safe_edit(f"✅ Заявка <code>{payment_id}</code> одобрена! (обновлен существующий клиент)")
             
             else:
-                # ── Вариант 2: НОВЫЙ пользователь ──
-                logger.info(f"Заявка type=new, пользователь {payment['tg_id']} новый, создаю клиента")
+                # ── АБСОЛЮТНО НОВЫЙ пользователь ──
+                logger.info(f"🆕 Заявка type='new' для НОВОГО пользователя {payment['tg_id']}, создаю клиента")
                 
                 uuid_str, email = await panel.add_new_client(payment["tg_id"], username, expiry_time=expiry_ms)
                 
                 if not uuid_str:
-                    # Не удалось создать нового клиента
                     logger.error(f"Не удалось создать нового клиента для {payment['tg_id']}")
                     await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
                     return
                 
-                # Сохраняем нового пользователя в БД
                 await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=expiry_iso)
                 await db.approve_payment(payment_id, "Одобрено администратором")
                 
-                # Отправляем VPN ссылку пользователю
                 try:
                     link = generate_vless_link(uuid_str, email)
                     await callback.bot.send_message(
                         payment["tg_id"], 
-                        f"✅ <b>Ваш платеж одобрен!</b>\n\nVPN готов!\n\n<code>{link}</code>", 
+                        f"✅ <b>Ваш платеж одобрен!</b>\n\nVPN готов к использованию!\n\n<code>{link}</code>", 
                         parse_mode="HTML"
                     )
                 except Exception as e:
