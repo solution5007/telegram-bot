@@ -244,10 +244,8 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             await safe_edit(f"✅ Заявка на продление <code>{payment_id}</code> одобрена!")
             
         else:
-            # ── НОВАЯ ПОДПИСКА ──
-            # Проверяем: есть ли у этого пользователя уже клиент в БД?
-            existing_user = await db.get_user(payment["tg_id"])
-            has_existing_client = existing_user and existing_user.get("uuid") and existing_user.get("email")
+            # ── НОВАЯ ПОДПИСКА (request_type = "new") ──
+            # Это может быть либо первый раз покупка, либо повторная покупка от существующего пользователя
             
             if period == 0:
                 expiry_ms = 0
@@ -258,19 +256,20 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 expiry_ms = int(expiry_datetime.timestamp() * 1000)
                 expiry_iso = expiry_datetime.isoformat()
 
+            # Проверяем есть ли юзер в БД
+            existing_user = await db.get_user(payment["tg_id"])
+            has_existing_client = existing_user and existing_user.get("uuid") and existing_user.get("email")
+            
             if has_existing_client:
-                # ──────────────────────────────────────────────────
-                # Вариант 1: Пользователь уже существует в системе
-                # Просто обновляем его expiry_time в панели (как при продлении)
-                # ──────────────────────────────────────────────────
-                logger.info(f"Пользователь {payment['tg_id']} уже существует, обновляю expiry_time")
+                # ── Вариант 1: Существующий клиент, пользователь платит еще раз ──
+                logger.info(f"Заявка type=new но пользователь {payment['tg_id']} уже существует в БД, просто обновляю expiry_time")
                 uuid_str = existing_user["uuid"]
                 email = existing_user["email"]
                 
-                # Обновляем в панели
+                # Обновляем в панели (заменяем expiry_time полностью, не добавляем дни)
                 update_success = await panel.update_client_expiry(email, expiry_ms)
                 if not update_success:
-                    logger.error(f"Не удалось обновить expiry_time для существующего клиента {email}")
+                    logger.error(f"Не удалось обновить expiry_time для {email}")
                     await safe_edit(f"❌ <b>Ошибка:</b> Не удалось обновить клиента в панели.\nID: <code>{payment_id}</code>")
                     return
                 
@@ -283,7 +282,7 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                     link = generate_vless_link(uuid_str, email)
                     await callback.bot.send_message(
                         payment["tg_id"], 
-                        f"✅ <b>Ваш платеж одобрен!</b>\n\nПодписка активирована!\n\n<code>{link}</code>", 
+                        f"✅ <b>Ваш платеж одобрен!</b>\n\nПодписка продлена!\n\n<code>{link}</code>", 
                         parse_mode="HTML"
                     )
                 except Exception as e:
@@ -292,17 +291,15 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 await safe_edit(f"✅ Заявка <code>{payment_id}</code> одобрена! (обновлен существующий клиент)")
             
             else:
-                # ──────────────────────────────────────────────────
-                # Вариант 2: НОВЫЙ пользователь, создаем клиента с нуля
-                # ──────────────────────────────────────────────────
-                logger.info(f"Создаю НОВОГО клиента для {payment['tg_id']}")
+                # ── Вариант 2: НОВЫЙ пользователь ──
+                logger.info(f"Заявка type=new, пользователь {payment['tg_id']} новый, создаю клиента")
                 
                 uuid_str, email = await panel.add_new_client(payment["tg_id"], username, expiry_time=expiry_ms)
                 
                 if not uuid_str:
-                    # Критическая ошибка при создании
-                    await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
+                    # Не удалось создать нового клиента
                     logger.error(f"Не удалось создать нового клиента для {payment['tg_id']}")
+                    await safe_edit(f"❌ <b>Ошибка:</b> Не удалось создать клиента в панели.\nID: <code>{payment_id}</code>")
                     return
                 
                 # Сохраняем нового пользователя в БД

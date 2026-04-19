@@ -46,13 +46,21 @@ async def on_period_selected(callback: types.CallbackQuery, state: FSMContext):
     prices = {1: 150, 3: 400, 6: 700}
     price = prices.get(period, 150)
     
+    # Правильная грамматика для месяцев
+    if period == 1:
+        period_text = "1 месяц"
+    elif period in [2, 3, 4]:
+        period_text = f"{period} месяца"
+    else:
+        period_text = f"{period} месяцев"
+    
     await state.update_data(period=period, price=price)
     await state.set_state(PaymentStates.waiting_for_screenshot)
     
     await callback.message.edit_text(
         f"<b>VPN Подписка</b>\n\n"
         f"Стоимость: {price} руб\n"
-        f"Срок: {period} месяц{'а' if period == 1 else ('а' if period < 5 else 'ев')}\n\n"
+        f"Срок: {period_text}\n\n"
         f"Реквизиты платежа:\n"
         f"<code>{CARD_NUMBER}</code>\n\n"
         f"1. Оплатите по карте выше\n"
@@ -135,10 +143,11 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -
     )
     
     # Выводим подтверждение пользователю
+    period_text = "1 месяц" if period == 1 else (f"{period} месяца" if period in [2, 3, 4] else f"{period} месяцев")
     await callback.message.edit_text(
         f"✅ <b>Заявка на оплату создана!</b>\n\n"
         f"ID: <code>{payment_id}</code>\n"
-        f"Период: {period} месяц{'а' if period == 1 else 'ев'}\n\n"
+        f"Период: {period_text}\n\n"
         f"Ожидайте проверки администратора.",
         parse_mode="HTML",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
@@ -172,13 +181,21 @@ async def on_renewal_period_selected(callback: types.CallbackQuery, state: FSMCo
     prices = {1: 150, 3: 400, 6: 700}
     price = prices.get(period, 150)
     
+    # Правильная грамматика для месяцев
+    if period == 1:
+        period_text = "1 месяц"
+    elif period in [2, 3, 4]:
+        period_text = f"{period} месяца"
+    else:
+        period_text = f"{period} месяцев"
+    
     await state.update_data(renewal_period=period, renewal_price=price)
     await state.set_state(PaymentStates.renewal_waiting_for_screenshot)
     
     await callback.message.edit_text(
         f"<b>Продление VPN Подписки</b>\n\n"
         f"Стоимость: {price} руб\n"
-        f"Срок: {period} месяц{'а' if period == 1 else ('а' if period < 5 else 'ев')}\n\n"
+        f"Срок: {period_text}\n\n"
         f"Реквизиты платежа:\n"
         f"<code>{CARD_NUMBER}</code>\n\n"
         f"1. Оплатите по карте выше\n"
@@ -256,10 +273,11 @@ async def on_renewal_confirm_payment(callback: types.CallbackQuery, state: FSMCo
     )
     
     # Выводим подтверждение пользователю
+    period_text = "1 месяц" if period == 1 else (f"{period} месяца" if period in [2, 3, 4] else f"{period} месяцев")
     await callback.message.edit_text(
         f"✅ <b>Заявка на продление создана!</b>\n\n"
         f"ID: <code>{payment_id}</code>\n"
-        f"Период: {period} месяц{'а' if period == 1 else 'ев'}\n\n"
+        f"Период: {period_text}\n\n"
         f"Ожидайте проверки администратора.",
         parse_mode="HTML",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
