@@ -140,9 +140,8 @@ async def create_payment_request(tg_id: int, screenshot_file_id: str, period: in
         "period": period,
     }
     _save(data)
-    logger.info("Заявка на %s (%s месяцев) %s создана для пользователя %s", 
-                "новую подписку" if request_type == "new" else "продление", 
-                period, payment_id, tg_id)
+    type_text = "ПРОДЛЕНИЕ" if request_type == "renewal" else "НОВУЮ подписку"
+    logger.info(f"💾 Заявка на {type_text} ({period} месяцев) {payment_id} создана для пользователя {tg_id}, type={request_type}")
     return payment_id
 
 

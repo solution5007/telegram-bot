@@ -105,6 +105,7 @@ async def on_invalid_screenshot(message: types.Message):
 @router.callback_query(F.data == "confirm_payment", StateFilter(PaymentStates.waiting_for_payment_confirmation))
 async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Подтверждение платежа для НОВОЙ подписки."""
+    logger.info("🆕 on_confirm_payment вызван для НОВОЙ подписки")
     data = await state.get_data()
     screenshot_file_id = data.get("screenshot_file_id")
     period = data.get("period", 1)
@@ -116,17 +117,31 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -
     
     await callback.message.edit_text("⏳ Отправляю заявку на проверку...")
     
-    # Сохраняем/обновляем статус пользователя для новой подписки
-    # uuid и email будут заполнены после одобрения админом
-    await db.upsert_user(
-        tg_id=callback.from_user.id,
-        username=callback.from_user.username,
-        uuid="", 
-        email="",
-        status="pending_payment"
-    )
+    # ⚠️ ВАЖНО: Не перезаписываем uuid и email, только меняем статус на pending_payment
+    # Если пользователь уже существует, его старые данные должны сохраниться
+    user = await db.get_user(callback.from_user.id)
+    
+    if user:
+        # Пользователь уже существует - просто обновляем статус
+        await db.upsert_user(
+            tg_id=callback.from_user.id,
+            username=callback.from_user.username,
+            uuid=user.get("uuid", ""),
+            email=user.get("email", ""),
+            status="pending_payment"
+        )
+    else:
+        # Новый пользователь - будет заполнено после одобрения админом
+        await db.upsert_user(
+            tg_id=callback.from_user.id,
+            username=callback.from_user.username,
+            uuid="", 
+            email="",
+            status="pending_payment"
+        )
     
     # Создаем заявку для НОВОЙ подписки (request_type="new")
+    logger.info(f"📝 Создаю платеж для НОВОЙ подписки: period={period}, request_type='new'")
     payment_id = await db.create_payment_request(
         callback.from_user.id, 
         screenshot_file_id, 
@@ -230,6 +245,7 @@ async def on_invalid_renewal_screenshot(message: types.Message):
 @router.callback_query(F.data == "confirm_payment", StateFilter(PaymentStates.renewal_waiting_for_payment_confirmation))
 async def on_renewal_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Подтверждение платежа для ПРОДЛЕНИЯ подписки."""
+    logger.info("🔄 on_renewal_confirm_payment вызван для ПРОДЛЕНИЯ подписки")
     data = await state.get_data()
     screenshot_file_id = data.get("renewal_screenshot_file_id")
     period = data.get("renewal_period", 1)
@@ -257,6 +273,7 @@ async def on_renewal_confirm_payment(callback: types.CallbackQuery, state: FSMCo
     await callback.message.edit_text("⏳ Отправляю заявку на продление...")
     
     # Создаем заявку для ПРОДЛЕНИЯ подписки (request_type="renewal")
+    logger.info(f"📝 Создаю платеж для ПРОДЛЕНИЯ подписки: period={period}, request_type='renewal'")
     payment_id = await db.create_payment_request(
         callback.from_user.id, 
         screenshot_file_id, 
