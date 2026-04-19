@@ -74,24 +74,42 @@ async def on_upload_payment(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(PaymentStates.waiting_for_screenshot, F.photo)
 async def on_screenshot_received(message: types.Message, state: FSMContext):
+    """Получить скриншот платежа для НОВОЙ подписки."""
     photo = message.photo[-1]
     await state.update_data(screenshot_file_id=photo.file_id)
     await state.set_state(PaymentStates.waiting_for_payment_confirmation)
     
     await message.answer(
-        "Скриншот получен! Отправляем на проверку?",
+        "✅ Скриншот получен!\n\nОтправляем на проверку?",
         reply_markup=payment_confirmation_menu()
+    )
+
+@router.message(PaymentStates.waiting_for_screenshot)
+async def on_invalid_screenshot(message: types.Message):
+    """Обработка неправильного формата при загрузке скриншота для новой подписки."""
+    await message.answer(
+        "❌ Пожалуйста, отправьте фото или скриншот (в формате изображения).",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Отмена", callback_data="buy_vpn")]
+        ])
     )
 
 @router.callback_query(F.data == "confirm_payment", StateFilter(PaymentStates.waiting_for_payment_confirmation))
 async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Подтверждение платежа для НОВОЙ подписки."""
     data = await state.get_data()
     screenshot_file_id = data.get("screenshot_file_id")
     period = data.get("period", 1)
     
-    await callback.message.edit_text("Отправляю заявку на проверку...")
+    if not screenshot_file_id:
+        await callback.answer("❌ Ошибка: скриншот не найден", show_alert=True)
+        await state.clear()
+        return
     
-    # Сохраняем/обновляем статус пользователя
+    await callback.message.edit_text("⏳ Отправляю заявку на проверку...")
+    
+    # Сохраняем/обновляем статус пользователя для новой подписки
+    # uuid и email будут заполнены после одобрения админом
     await db.upsert_user(
         tg_id=callback.from_user.id,
         username=callback.from_user.username,
@@ -100,15 +118,28 @@ async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -
         status="pending_payment"
     )
     
-    # Создаем заявку в БД (ВЫЗЫВАЕМ ОДИН РАЗ)
-    payment_id = await db.create_payment_request(callback.from_user.id, screenshot_file_id, period)
+    # Создаем заявку для НОВОЙ подписки (request_type="new")
+    payment_id = await db.create_payment_request(
+        callback.from_user.id, 
+        screenshot_file_id, 
+        period=period,
+        request_type="new"  # ← явно указываем что это новая подписка
+    )
     
-    # Уведомляем админа (ВЫЗЫВАЕМ ОДИН РАЗ)
-    await notify_admin_about_payment(callback.bot, payment_id, callback.from_user.id, callback.from_user.username)
+    # Уведомляем админа о заявке
+    await notify_admin_about_payment(
+        callback.bot, 
+        payment_id, 
+        callback.from_user.id, 
+        callback.from_user.username
+    )
     
     # Выводим подтверждение пользователю
     await callback.message.edit_text(
-        f"✅ Заявка создана!\nID заявки: <code>{payment_id}</code>\n\nОжидайте проверки администратора.",
+        f"✅ <b>Заявка на оплату создана!</b>\n\n"
+        f"ID: <code>{payment_id}</code>\n"
+        f"Период: {period} месяц{'а' if period == 1 else 'ев'}\n\n"
+        f"Ожидайте проверки администратора.",
         parse_mode="HTML",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="В главное меню", callback_data="main_menu")]
@@ -159,42 +190,80 @@ async def on_renewal_period_selected(callback: types.CallbackQuery, state: FSMCo
 
 @router.message(PaymentStates.renewal_waiting_for_screenshot, F.photo)
 async def on_renewal_screenshot_received(message: types.Message, state: FSMContext):
+    """Получить скриншот платежа для ПРОДЛЕНИЯ подписки."""
     photo = message.photo[-1]
     await state.update_data(renewal_screenshot_file_id=photo.file_id)
     await state.set_state(PaymentStates.renewal_waiting_for_payment_confirmation)
     
     await message.answer(
-        "Скриншот получен! Отправляем на проверку?",
+        "✅ Скриншот получен!\n\nОтправляем на проверку?",
         reply_markup=payment_confirmation_menu()
+    )
+
+@router.message(PaymentStates.renewal_waiting_for_screenshot)
+async def on_invalid_renewal_screenshot(message: types.Message):
+    """Обработка неправильного формата при загрузке скриншота для продления."""
+    await message.answer(
+        "❌ Пожалуйста, отправьте фото или скриншот (в формате изображения).",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Отмена", callback_data="profile")]
+        ])
     )
 
 @router.callback_query(F.data == "confirm_payment", StateFilter(PaymentStates.renewal_waiting_for_payment_confirmation))
 async def on_renewal_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Подтверждение платежа для ПРОДЛЕНИЯ подписки."""
     data = await state.get_data()
+    screenshot_file_id = data.get("renewal_screenshot_file_id")
+    period = data.get("renewal_period", 1)
     
-    # Проверяем, это продление или новая подписка
-    if "renewal_screenshot_file_id" in data:
-        screenshot_file_id = data.get("renewal_screenshot_file_id")
-        period = data.get("renewal_period", 1)
-        request_type = "renewal"
-    else:
-        screenshot_file_id = data.get("screenshot_file_id")
-        period = data.get("period", 1)
-        request_type = "new"
+    if not screenshot_file_id:
+        await callback.answer("❌ Ошибка: скриншот не найден", show_alert=True)
+        await state.clear()
+        return
     
-    await callback.message.edit_text("Отправляю заявку на проверку...")
+    # Проверяем, есть ли пользователь в БД (не может продлевать если не активный)
+    user = await db.get_user(callback.from_user.id)
+    if not user or not user.get("uuid") or not user.get("email"):
+        await callback.message.edit_text(
+            "❌ <b>Ошибка:</b> Вы не можете продлить подписку, которой нет.\n\n"
+            "Сначала купите VPN.",
+            parse_mode="HTML",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="Купить VPN", callback_data="buy_vpn")],
+                [types.InlineKeyboardButton(text="В главное меню", callback_data="main_menu")]
+            ])
+        )
+        await state.clear()
+        return
     
-    # Создаем заявку в БД
-    payment_id = await db.create_payment_request(callback.from_user.id, screenshot_file_id, period, request_type)
+    await callback.message.edit_text("⏳ Отправляю заявку на продление...")
     
-    # Уведомляем админа
-    await notify_admin_about_payment(callback.bot, payment_id, callback.from_user.id, callback.from_user.username)
+    # Создаем заявку для ПРОДЛЕНИЯ подписки (request_type="renewal")
+    payment_id = await db.create_payment_request(
+        callback.from_user.id, 
+        screenshot_file_id, 
+        period=period,
+        request_type="renewal"  # ← явно указываем что это продление
+    )
+    
+    # Уведомляем админа о заявке на продление
+    await notify_admin_about_payment(
+        callback.bot, 
+        payment_id, 
+        callback.from_user.id, 
+        callback.from_user.username
+    )
     
     # Выводим подтверждение пользователю
     await callback.message.edit_text(
-        f"✅ Заявка создана!\nID заявки: <code>{payment_id}</code>\n\nОжидайте проверки администратора.",
+        f"✅ <b>Заявка на продление создана!</b>\n\n"
+        f"ID: <code>{payment_id}</code>\n"
+        f"Период: {period} месяц{'а' if period == 1 else 'ев'}\n\n"
+        f"Ожидайте проверки администратора.",
         parse_mode="HTML",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="В мой кабинет", callback_data="profile")],
             [types.InlineKeyboardButton(text="В главное меню", callback_data="main_menu")]
         ])
     )
