@@ -35,11 +35,13 @@ def buy_vpn_menu() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="Отмена", callback_data="main_menu"))
     return builder.as_markup()
 
-def payment_confirmation_menu() -> InlineKeyboardMarkup:
+def payment_confirmation_menu(is_renewal: bool = False) -> InlineKeyboardMarkup:
     """Меню подтверждения платежа."""
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="Я оплатил", callback_data="confirm_payment"))
-    builder.row(InlineKeyboardButton(text="Отмена", callback_data="main_menu"))
+    callback_data = "confirm_payment_renewal" if is_renewal else "confirm_payment_new"
+    builder.row(InlineKeyboardButton(text="Я оплатил", callback_data=callback_data))
+    cancel_callback = "profile" if is_renewal else "main_menu"
+    builder.row(InlineKeyboardButton(text="Отмена", callback_data=cancel_callback))
     return builder.as_markup()
 
 def admin_menu() -> InlineKeyboardMarkup:

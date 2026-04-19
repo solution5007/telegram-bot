@@ -89,7 +89,7 @@ async def on_screenshot_received(message: types.Message, state: FSMContext):
     
     await message.answer(
         "✅ Скриншот получен!\n\nОтправляем на проверку?",
-        reply_markup=payment_confirmation_menu()
+        reply_markup=payment_confirmation_menu(is_renewal=False)
     )
 
 @router.message(PaymentStates.waiting_for_screenshot)
@@ -102,7 +102,7 @@ async def on_invalid_screenshot(message: types.Message):
         ])
     )
 
-@router.callback_query(F.data == "confirm_payment", StateFilter(PaymentStates.waiting_for_payment_confirmation))
+@router.callback_query(F.data == "confirm_payment_new")
 async def on_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Подтверждение платежа для НОВОЙ подписки."""
     logger.info("🆕 on_confirm_payment вызван для НОВОЙ подписки")
@@ -229,7 +229,7 @@ async def on_renewal_screenshot_received(message: types.Message, state: FSMConte
     
     await message.answer(
         "✅ Скриншот получен!\n\nОтправляем на проверку?",
-        reply_markup=payment_confirmation_menu()
+        reply_markup=payment_confirmation_menu(is_renewal=True)
     )
 
 @router.message(PaymentStates.renewal_waiting_for_screenshot)
@@ -242,7 +242,7 @@ async def on_invalid_renewal_screenshot(message: types.Message):
         ])
     )
 
-@router.callback_query(F.data == "confirm_payment", StateFilter(PaymentStates.renewal_waiting_for_payment_confirmation))
+@router.callback_query(F.data == "confirm_payment_renewal")
 async def on_renewal_confirm_payment(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Подтверждение платежа для ПРОДЛЕНИЯ подписки."""
     logger.info("🔄 on_renewal_confirm_payment вызван для ПРОДЛЕНИЯ подписки")
