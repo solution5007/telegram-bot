@@ -236,9 +236,17 @@ class PanelAPI:
                         old_expiry = client.get("expiryTime")
                         client["expiryTime"] = expiry_time
                         client_found = True
+                        
+                        # Логируем с типами данных для отладки
                         logger.info(
-                            "Найден клиент %s: старый expiry=%s, новый expiry=%s",
-                            email, old_expiry, expiry_time
+                            "🔄 Обновление expiry для %s:\n"
+                            "   OLD: %s (тип: %s)\n"
+                            "   NEW: %s (тип: %s)\n"
+                            "   CHANGED: %s",
+                            email, 
+                            old_expiry, type(old_expiry).__name__,
+                            expiry_time, type(expiry_time).__name__,
+                            old_expiry != expiry_time
                         )
                         break
                 

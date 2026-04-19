@@ -200,12 +200,15 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                 days = period * 30
                 
                 # Определяем базовую дату для расчета
+                current_dt = None
+                
                 if current_expiry == 0:
                     # Уже безлимит, оставляем безлимит
                     new_expiry_ms = 0
                     new_expiry_iso = 0
                     expiry_text = "Безлимит ♾️"
                     old_expiry_text = "Безлимит ♾️"
+                    current_dt = None  # Не нужно вычислять дальше
                 elif isinstance(current_expiry, str) and current_expiry:
                     # Добавляем дни к существующей дате
                     try:
@@ -220,20 +223,25 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
                     current_dt = datetime.now()
                     old_expiry_text = "Не установлена"
                 
-                new_expiry_dt = current_dt + timedelta(days=days)
-                new_expiry_ms = int(new_expiry_dt.timestamp() * 1000)
-                new_expiry_iso = new_expiry_dt.isoformat()
-                expiry_text = new_expiry_dt.strftime('%d.%m.%Y')
-                
-                logger.info(f"🔄 ПРОДЛЕНИЕ: {email} | было: {old_expiry_text} | добавляю: {days} дней ({period} месяцев) | новое: {expiry_text}")
+                # Вычисляем новый expiry только если это не безлимит
+                if current_dt is not None:
+                    new_expiry_dt = current_dt + timedelta(days=days)
+                    # Используем UTC для консистентности
+                    new_expiry_ms = int(new_expiry_dt.timestamp() * 1000)
+                    new_expiry_iso = new_expiry_dt.isoformat()
+                    expiry_text = new_expiry_dt.strftime('%d.%m.%Y')
+                    
+                    logger.info(f"🔄 ПРОДЛЕНИЕ: {email} | было: {old_expiry_text} | добавляю: {days} дней ({period} месяцев) | новое: {expiry_text}")
+                    logger.debug(f"   Вычислено: current_dt={current_dt} → new_expiry_dt={new_expiry_dt} → new_expiry_ms={new_expiry_ms}")
             
             # Обновляем expiry time в панели
+            logger.info(f"📤 Отправляю обновление в панель: {email}, new_expiry_ms={new_expiry_ms}, new_expiry_iso={new_expiry_iso}")
             if not await panel.update_client_expiry(email, new_expiry_ms):
                 logger.error(f"❌ Не удалось обновить expiry_time в панели для {email}")
                 await safe_edit(f"❌ <b>Ошибка:</b> Не удалось обновить клиента в панели.\nID: <code>{payment_id}</code>")
                 return
             
-            logger.info(f"✅ Expiry time обновлен в панели: {email} → {expiry_text}")
+            logger.info(f"✅ Expiry time обновлен в панели: {email} → {expiry_text} (миллисекунды: {new_expiry_ms})")
             
             # Сохраняем новый expiry_date в БД
             await db.upsert_user(payment["tg_id"], username, uuid_str, email, status="active", expiry_time=new_expiry_iso)
@@ -267,11 +275,15 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             if period == 0:
                 expiry_ms = 0
                 expiry_iso = 0
+                expiry_text = "Безлимит ♾️"
             else:
                 days = period * 30
+                # Используем datetime.now() для новой подписки (текущая дата + дни)
                 expiry_datetime = datetime.now() + timedelta(days=days)
                 expiry_ms = int(expiry_datetime.timestamp() * 1000)
                 expiry_iso = expiry_datetime.isoformat()
+                expiry_text = expiry_datetime.strftime('%d.%m.%Y')
+                logger.debug(f"🆕 NEW: Вычислено expiry_time = текущая дата + {days} дней = {expiry_text} (миллисекунды: {expiry_ms})")
 
             # Проверяем, есть ли уже пользователь в БД
             existing_user = await db.get_user(payment["tg_id"])
@@ -306,7 +318,7 @@ async def on_approve_payment(callback: types.CallbackQuery, panel: PanelAPI):
             
             else:
                 # ── АБСОЛЮТНО НОВЫЙ пользователь ──
-                logger.info(f"🆕 Заявка type='new' для НОВОГО пользователя {payment['tg_id']}, создаю клиента")
+                logger.info(f"🆕 Заявка type='new' для НОВОГО пользователя {payment['tg_id']}, создаю клиента. Expiry: {expiry_text} (миллисекунды: {expiry_ms})")
                 
                 uuid_str, email = await panel.add_new_client(payment["tg_id"], username, expiry_time=expiry_ms)
                 
