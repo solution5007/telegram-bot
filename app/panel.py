@@ -142,7 +142,7 @@ class PanelAPI:
         inbound_id = 1
         session = await self._ensure_session()
         if not session:
-            logger.error("Не удалось создать сессию для add_new_client")
+            logger.error("❌ Не удалось создать сессию для add_new_client")
             return None, None
 
         client_uuid = str(uuid.uuid4())
@@ -173,7 +173,16 @@ class PanelAPI:
         logger.info("🆕 Создаю НОВОГО клиента %s (uuid=%s, expiry=%s)...", email, client_uuid, expiry_time)
 
         try:
-            async with session.post(url, json=payload, timeout=5) as resp:
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 401 or resp.status == 403:
+                    logger.warning("⚠️ Сессия неавторизирована (статус %d). Очищаю и переподключаюсь.", resp.status)
+                    self._session = None
+                    return None, None
+                
+                if resp.status != 200:
+                    logger.error("❌ Ошибка HTTP %d при создании клиента %s", resp.status, email)
+                    return None, None
+                
                 data = await resp.json()
                 if data.get("success"):
                     logger.info("✅ Клиент %s успешно создан!", email)
@@ -200,21 +209,30 @@ class PanelAPI:
 
         session = await self._ensure_session()
         if not session:
-            logger.error("Не удалось создать сессию")
+            logger.error("❌ Не удалось создать сессию для update_client_expiry")
             return False
 
         # Получаем весь inbound
         get_url = self._url(f"panel/api/inbounds/get/{inbound_id}")
         try:
-            async with session.get(get_url, timeout=5) as resp:
+            async with session.get(get_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 401 or resp.status == 403:
+                    logger.warning("⚠️ Сессия неавторизирована при получении inbound (статус %d)", resp.status)
+                    self._session = None
+                    return False
+                
+                if resp.status != 200:
+                    logger.error("❌ Ошибка HTTP %d при получении inbound %s", resp.status, inbound_id)
+                    return False
+                
                 data = await resp.json()
                 if not data.get("success"):
-                    logger.error("Ошибка получения inbound: %s", data.get("msg"))
+                    logger.error("❌ Ошибка API при получении inbound: %s", data.get("msg"))
                     return False
                 
                 inbound = data.get("obj")
                 if not inbound:
-                    logger.error("Inbound не найден")
+                    logger.error("❌ Inbound %s не найден", inbound_id)
                     return False
                 
                 # Находим клиента по email и обновляем его expiryTime
@@ -223,7 +241,7 @@ class PanelAPI:
                     try:
                         settings = json.loads(settings_str)
                     except json.JSONDecodeError as e:
-                        logger.error("Ошибка парсинга settings: %s", e)
+                        logger.error("❌ Ошибка парсинга settings: %s", e)
                         return False
                 else:
                     settings = settings_str
@@ -251,7 +269,7 @@ class PanelAPI:
                         break
                 
                 if not client_found:
-                    logger.warning("Клиент %s не найден в inbound %s", email, inbound_id)
+                    logger.warning("❌ Клиент %s не найден в inbound %s", email, inbound_id)
                     return False
                 
                 # ⚠️ ВАЖНО: Отправляем полный inbound объект, не только settings
@@ -286,7 +304,16 @@ class PanelAPI:
                 
                 logger.debug("Отправляю update для inbound %s: %s", inbound_id, update_payload.keys())
                 
-                async with session.post(update_url, json=update_payload, timeout=5) as resp:
+                async with session.post(update_url, json=update_payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 401 or resp.status == 403:
+                        logger.warning("⚠️ Сессия неавторизирована при обновлении expiry (статус %d)", resp.status)
+                        self._session = None
+                        return False
+                    
+                    if resp.status != 200:
+                        logger.error("❌ Ошибка HTTP %d при обновлении expiry", resp.status)
+                        return False
+                    
                     result = await resp.json()
                     if result.get("success"):
                         logger.info("✅ Expiry time для %s успешно обновлен на %s!", email, expiry_time)
@@ -306,55 +333,118 @@ class PanelAPI:
         """Возвращает ``(upload, download)`` в байтах."""
         session = await self._ensure_session()
         if not session:
+            logger.error("❌ Сессия недоступна для get_client_traffic")
             return 0, 0
 
         url = self._url(f"panel/api/inbounds/getClientTraffics/{email}")
-        logger.info("Запрос трафика для %s…", email)
+        logger.debug("📤 Запрос трафика для %s на URL: %s", email, url)
 
         try:
-            async with session.get(url) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 401 or resp.status == 403:
+                    logger.warning("⚠️ Сессия неавторизирована (статус %d). Очищаю сессию.", resp.status)
+                    self._session = None
+                    return 0, 0
+                
+                if resp.status != 200:
+                    logger.error("❌ Ошибка HTTP %d при запросе трафика для %s", resp.status, email)
+                    return 0, 0
+                
                 data = await resp.json()
                 if data.get("success") and data.get("obj"):
-#                    await asyncio.sleep(1)
-                    return data["obj"].get("up", 0), data["obj"].get("down", 0)
+                    up = data["obj"].get("up", 0)
+                    down = data["obj"].get("down", 0)
+                    logger.debug("✅ Получены данные трафика для %s: up=%d, down=%d", email, up, down)
+                    return up, down
+                else:
+                    logger.warning("⚠️ API вернул success=false для трафика %s: %s", email, data.get("msg", "no msg"))
+                    return 0, 0
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Timeout при получении трафика для %s", email)
+            return 0, 0
         except Exception as exc:
-            logger.error("Ошибка получения трафика: %s", exc)
-
-        return 0, 0
+            logger.error("❌ Ошибка получения трафика для %s: %s", email, exc, exc_info=True)
+            return 0, 0
 
     async def get_client_expiry(self, email: str) -> Optional[int]:
         """Возвращает expiryTime в миллисекундах или None."""
         session = await self._ensure_session()
         if not session:
+            logger.error("❌ Сессия недоступна для get_client_expiry")
             return None
 
         url = self._url(f"panel/api/inbounds/getClientTraffics/{email}")
-        logger.info("Запрос expiry time для %s…", email)
+        logger.debug("📤 Запрос expiry time для %s на URL: %s", email, url)
 
         try:
-            async with session.get(url) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 401 or resp.status == 403:
+                    logger.warning("⚠️ Сессия неавторизирована (статус %d). Очищаю сессию.", resp.status)
+                    self._session = None
+                    return None
+                
+                if resp.status != 200:
+                    logger.error("❌ Ошибка HTTP %d при запросе expiry для %s", resp.status, email)
+                    return None
+                
                 data = await resp.json()
                 if data.get("success") and data.get("obj"):
-                    return data["obj"].get("expiryTime", 0)
+                    expiry = data["obj"].get("expiryTime", 0)
+                    logger.debug("✅ Получена expiry_time для %s: %s", email, expiry)
+                    return expiry
+                else:
+                    logger.warning("⚠️ API вернул success=false для expiry %s: %s", email, data.get("msg", "no msg"))
+                    return None
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Timeout при получении expiry для %s", email)
+            return None
         except Exception as exc:
-            logger.error("Ошибка получения expiry time: %s", exc)
-
-        return None
+            logger.error("❌ Ошибка получения expiry time для %s: %s", email, exc, exc_info=True)
+            return None
 
     async def get_inbounds(self) -> dict:
         """Возвращает список всех инбаундов."""
         session = await self._ensure_session()
         if not session:
+            logger.error("❌ Сессия недоступна для get_inbounds")
             return {"success": False, "msg": "No session"}
 
         url = self._url("panel/api/inbounds/list")
+        logger.debug("📤 Запрос списка инбаундов на URL: %s", url)
+        
         try:
-            async with session.get(url, timeout=5) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 401 or resp.status == 403:
+                    logger.warning("⚠️ Сессия неавторизирована (статус %d). Очищаю сессию и повторяю попытку.", resp.status)
+                    # Очищаем сессию, чтобы при следующем вызове создалась новая
+                    self._session = None
+                    # Одна повторная попытка с новой сессией
+                    session = await self._ensure_session()
+                    if not session:
+                        logger.error("❌ Не удалось создать новую сессию")
+                        return {"success": False, "msg": "Failed to create session"}
+                    
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as retry_resp:
+                        if retry_resp.status != 200:
+                            logger.error("❌ Повторный запрос вернул статус %d", retry_resp.status)
+                            return {"success": False, "msg": f"Status {retry_resp.status}"}
+                        result = await retry_resp.json(content_type=None)
+                        logger.debug("✅ Успешно получены инбаунды после переподключения")
+                        return result
+                
                 if resp.status != 200:
+                    logger.error("❌ Ошибка HTTP %d при запросе инбаундов", resp.status)
                     return {"success": False, "msg": f"Status {resp.status}"}
-                return await resp.json(content_type=None)
+                
+                result = await resp.json(content_type=None)
+                logger.debug("✅ Успешно получены инбаунды: %d объектов", len(result.get("obj", [])))
+                return result
+                
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Timeout при запросе инбаундов")
+            return {"success": False, "msg": "Timeout"}
         except Exception as exc:
-            logger.error("Ошибка при запросе всех инбаундов: %s", exc)
+            logger.error("❌ Ошибка при запросе инбаундов: %s", exc, exc_info=True)
             return {"success": False, "msg": str(exc)}
                 
     # ── lifecycle ────────────────────────────────────────────────────────

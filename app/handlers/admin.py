@@ -218,23 +218,35 @@ async def on_show_all_users(callback: types.CallbackQuery, panel: PanelAPI):
 
     try:
         # Получаем список инбаундов с клиентами
+        logger.info("📤 Запрашиваю список всех пользователей из панели...")
         data = await panel.get_inbounds()
         
         if not data.get("success"):
-            error_msg = f"Ошибка панели: {data.get('msg', 'Unknown error')}"
+            error_msg = f"❌ Ошибка панели: {data.get('msg', 'Unknown error')}"
+            logger.error(f"Ошибка при получении инбаундов: {error_msg}")
             await _safe_edit_or_send(callback, error_msg, admin_menu())
             return
         
         # Собираем всех клиентов со всех инбаундов
         all_clients = []
-        for inbound in data.get("obj", []):
-            inbound_settings = json.loads(inbound.get("settings", "{}"))
-            clients = inbound_settings.get("clients", [])
-            all_clients.extend(clients)
+        obj_list = data.get("obj", [])
+        logger.info(f"✅ Получено {len(obj_list)} инбаундов")
+        
+        for inbound in obj_list:
+            try:
+                inbound_settings = json.loads(inbound.get("settings", "{}"))
+                clients = inbound_settings.get("clients", [])
+                all_clients.extend(clients)
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ Ошибка парсинга settings для инбаунда: {e}")
+                continue
         
         if not all_clients:
+            logger.warning("⚠️ Пользователей в панели не найдено")
             await _safe_edit_or_send(callback, "👤 Пользователей в панели пока нет.", admin_menu())
             return
+        
+        logger.info(f"✅ Найдено {len(all_clients)} клиентов в панели")
         
         # Сортируем по email для консистентности
         all_clients.sort(key=lambda x: x.get("email", ""))

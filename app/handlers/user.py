@@ -75,8 +75,12 @@ async def on_profile(callback: types.CallbackQuery, panel: PanelAPI) -> None:
     email = user["email"]
     user_status = user.get("status", "inactive")  # Безопасный дефолт
 
-    up, down = await panel.get_client_traffic(email)
-    total_gb = round((up + down) / (1024**3), 2)
+    try:
+        up, down = await panel.get_client_traffic(email)
+        total_gb = round((up + down) / (1024**3), 2)
+    except Exception as e:
+        logger.error(f"Ошибка получения трафика для {email}: {e}")
+        total_gb = 0
 
     link = generate_vless_link(uuid_str, email)
     
