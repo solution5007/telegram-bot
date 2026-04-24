@@ -73,28 +73,55 @@ class PanelAPI:
 
         login_url = self._url("login")
 
-        for offset in (0, -1, 1):
-            code = self._totp_code(offset)
-            if code is None:
-                continue
+        # Проверяем включена ли двухфакторная аутентификация
+        has_2fa = bool(settings.panel_2fa_secret)
+        
+        if has_2fa:
+            # ── ЛОГИН С 2FA ──
+            logger.info("🔐 2FA включена, пытаюсь логиниться с TOTP кодами...")
+            for offset in (0, -1, 1):
+                code = self._totp_code(offset)
+                if code is None:
+                    continue
 
+                payload = {
+                    "username": settings.panel_username,
+                    "password": settings.panel_password,
+                    "loginSecret": code,
+                }
+                logger.info("📝 Попытка логина (TOTP offset=%s, code=%s)", offset, code[:6] + "...")
+                try:
+                    async with self._session.post(login_url, data=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        text = await resp.text()
+                        if resp.status == 200 and '"success":true' in text.lower():
+                            logger.info("✅ Успешный вход в панель с 2FA!")
+                            return self._session
+                except Exception as exc:
+                    logger.error("❌ Ошибка сети при логине: %s", exc)
+
+            logger.error("❌ Не удалось войти в панель ни с одним TOTP‑кодом.")
+            return None
+        else:
+            # ── ЛОГИН БЕЗ 2FA ──
+            logger.info("🔓 2FA отключена, пытаюсь логиниться без TOTP...")
             payload = {
                 "username": settings.panel_username,
                 "password": settings.panel_password,
-                "loginSecret": code,
+                # Не добавляем loginSecret если 2FA отключена
             }
-            logger.info("Попытка логина в панель (TOTP offset=%s)", offset)
+            logger.info("📝 Попытка логина без 2FA")
             try:
-                async with self._session.post(login_url, data=payload) as resp:
+                async with self._session.post(login_url, data=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     text = await resp.text()
                     if resp.status == 200 and '"success":true' in text.lower():
-                        logger.info("Успешный вход в панель!")
+                        logger.info("✅ Успешный вход в панель без 2FA!")
                         return self._session
+                    else:
+                        logger.error("❌ Логин без 2FA вернул статус %d", resp.status)
             except Exception as exc:
-                logger.error("Ошибка сети при логине: %s", exc)
-
-        logger.error("Не удалось войти в панель ни с одним TOTP‑кодом.")
-        return None
+                logger.error("❌ Ошибка при логине без 2FA: %s", exc)
+            
+            return None
 
     # ── API‑методы ───────────────────────────────────────────────────────
     async def get_vless_inbound_id(self) -> Optional[int]:
